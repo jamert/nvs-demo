@@ -1,6 +1,8 @@
 import argparse
 
-import uvicorn
+lazy import uvicorn
+
+lazy from nevis_search.api import create_app
 
 
 def main() -> None:
@@ -11,7 +13,7 @@ def main() -> None:
     serve.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     uvicorn.run(
-        "nevis_tiny_search.api:create_app",
+        create_app,
         factory=True,
         host=args.host,
         port=args.port,

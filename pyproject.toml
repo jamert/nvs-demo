@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-nevis-tiny-search = "nevis_tiny_search.cli:main"
+nevis-tiny-search = "nevis_search.cli:main"
 
 [dependency-groups]
 dev = [
@@ -19,12 +19,16 @@ dev = [
     "pre-commit>=4.7.0",
     "pyright>=1.1.414",
     "pytest",
+    "pytest-cov>=7",
     "ruff>=0.17.6",
 ]
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "nevis_search"
 
 [tool.isort]
 profile = "black"
@@ -41,3 +45,12 @@ include = ["src", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+source = ["src/nevis_search"]
+patch = ["subprocess"]
+sigterm = true  # The test harness stops the server with SIGTERM.
+# The pytest process itself may not run any application code.
+disable_warnings = ["no-data-collected"]
