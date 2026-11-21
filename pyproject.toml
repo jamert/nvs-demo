@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "A small search API for clients and their documents."
 readme = "README.md"
 requires-python = ">=3.15"
-dependencies = []
+dependencies = [
+    "fastapi>=0.165.0",
+    "uvicorn>=0.54.0",
+]
 
 [project.scripts]
 nevis-tiny-search = "nevis_tiny_search.cli:main"

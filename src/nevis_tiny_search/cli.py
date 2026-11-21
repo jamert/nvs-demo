@@ -1,5 +1,7 @@
 import argparse
 
+import uvicorn
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="nevis-tiny-search")
@@ -7,5 +9,10 @@ def main() -> None:
     serve = commands.add_parser("serve", help="Run the API server")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
-    parser.parse_args()
-    parser.exit(1, "nevis-tiny-search: serve is not implemented yet\n")
+    args = parser.parse_args()
+    uvicorn.run(
+        "nevis_tiny_search.api:create_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+    )
