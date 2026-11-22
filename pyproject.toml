@@ -43,7 +43,7 @@ line-length = 88
 [tool.pyright]
 typeCheckingMode = "basic"
 reportDeprecated = "warning"
-include = ["src", "tests"]
+include = ["src", "tests", "evals"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
