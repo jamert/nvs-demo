@@ -1,35 +1,46 @@
+from dataclasses import dataclass, field, replace
+from uuid import uuid4
+
 import httpx
-from pydantic import UUID4, BaseModel
+from pydantic import BaseModel
 
 
 class Client(BaseModel):
-    id: UUID4
+    id: str
     first_name: str
     last_name: str
     email: str
 
     @staticmethod
-    def new() -> dict[str, str]:
-        return {
-            "first_name": "Jane",
-            "last_name": "Doe",
-            "email": "jane.doe@example.com",
-        }
+    def any() -> Client:
+        return ClientBuilder().build()
+
+
+@dataclass(frozen=True)
+class ClientBuilder:
+    id: str = field(default_factory=lambda: str(uuid4()))
+    email: str = field(default_factory=lambda: f"jane.doe+{uuid4().hex}@example.com")
+
+    def with_id(self, client_id: str) -> ClientBuilder:
+        return replace(self, id=client_id)
+
+    def build(self) -> Client:
+        return Client(id=self.id, first_name="Jane", last_name="Doe", email=self.email)
 
 
 class Document(BaseModel):
-    id: UUID4
-    client_id: UUID4
+    id: str
+    client_id: str
     title: str
     content: str
 
     @staticmethod
-    def new(client: Client) -> dict[str, str]:
+    def any(*, for_: Client) -> dict[str, str]:
         return {
             "title": "April 2026 utility bill",
             "content": (
                 "Electricity account statement — Example Energy\n"
-                f"Account holder: {client.first_name} {client.last_name}\n"
+                f"Account holder: {for_.first_name} {for_.last_name}\n"
                 "Service address: 123 Example Avenue, Portland, OR 97201\n"
                 "Billing period: April 1–30, 2026\n"
                 "Electricity used: 412 kWh at $0.16/kWh — $65.92\n"
@@ -49,13 +60,15 @@ class SearchApi:
         assert response.status_code == 200, response.text
         return response.json()
 
-    def create_client(self, payload: dict[str, str]) -> Client:
-        response = self._http.post("/clients", json=payload)
+    def create_client(self, client: Client) -> Client:
+        # exclude `id` because we're creating an object here
+        response = self._http.post("/clients", json=client.model_dump(exclude={"id"}))
         assert response.status_code == 201, response.text
         return Client.model_validate(response.json())
 
     def add_document(self, client: Client, payload: dict[str, str]) -> Document:
         response = self._http.post(f"/clients/{client.id}/documents", json=payload)
+        response.raise_for_status()
         assert response.status_code == 201, response.text
         return Document.model_validate(response.json())
 

@@ -19,7 +19,7 @@ worker; separate processes don't share data.
 
 - `POST /clients` creates a client and returns its randomly generated UUIDv4.
 - `POST /clients/{id}/documents` adds a text document to a client. An unknown
-  UUID returns HTTP 404; a malformed UUID returns HTTP 422.
+  client UUID returns HTTP 404; a malformed request returns HTTP 400
 - `GET /search?q=...` returns a JSON array of matching client and document
   objects, or `[]` when nothing matches. This first version uses case-insensitive
   substring matching, not semantic search.

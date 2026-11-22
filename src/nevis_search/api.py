@@ -6,10 +6,16 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
 router = APIRouter()
+
+
+class ClientNotFound(Exception):
+    pass
 
 
 class ClientInput(BaseModel):
@@ -86,7 +92,7 @@ async def add_document(id: UUID, payload: DocumentInput, request: Request) -> Do
         ),
     )
     if result.rowcount == 0:
-        raise HTTPException(status_code=404, detail="Client not found")
+        raise ClientNotFound(id)
     return document
 
 
@@ -148,6 +154,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="API", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(
+        title="API",
+        version="1.0.0",
+        lifespan=lifespan,
+        responses={
+            400: {"description": "Invalid request"},
+            # A 4XX entry suppresses FastAPI's default OpenAPI 422 response;
+            # the validation handler below returns 400 instead.
+            "4XX": {"description": "Client error"},
+        },
+    )
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": "Invalid request"})
+
+    @app.exception_handler(ClientNotFound)
+    async def client_not_found(_: Request, exc: ClientNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": "Client not found"})
+
     app.include_router(router)
     return app
