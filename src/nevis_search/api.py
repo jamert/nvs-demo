@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from nevis_search.config import from_env
 from nevis_search.search import (
     Client,
     ClientInput,
@@ -60,7 +61,7 @@ async def search(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    with search_factory() as service:
+    with search_factory(from_env()) as service:
         app.state.search = service
         yield
 

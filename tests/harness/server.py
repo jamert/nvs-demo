@@ -12,6 +12,7 @@ from time import monotonic, sleep
 import httpx
 import pytest
 
+from tests.harness.environment import Environment
 from tests.harness.search_api import SearchApi
 
 HOST = "127.0.0.1"
@@ -38,7 +39,7 @@ def unused_port() -> int:
 
 
 @contextmanager
-def api() -> Generator[Server]:
+def api(env: Environment) -> Generator[Server]:
     port = unused_port()
     with (
         TemporaryDirectory(prefix="nevis-test-") as directory,
@@ -46,6 +47,7 @@ def api() -> Generator[Server]:
             ["nevis-tiny-search", "serve", "--host", HOST, "--port", str(port)],
             port=port,
             log_path=Path(directory) / "server.log",
+            env=os.environ | env.envvars,
         ) as server,
     ):
         yield server
@@ -53,12 +55,18 @@ def api() -> Generator[Server]:
 
 @contextmanager
 def running_server(
-    command: Sequence[str], *, port: int, log_path: Path
+    command: Sequence[str],
+    *,
+    port: int,
+    log_path: Path,
+    env: dict[str, str] | None = None,
 ) -> Generator[Server]:
     # A file lets the child keep logging without blocking on an undrained pipe.
     with log_path.open("wb") as log:
         try:
-            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+            process = subprocess.Popen(
+                command, stdout=log, stderr=subprocess.STDOUT, env=env
+            )
         except OSError as exc:
             pytest.fail(f"Could not launch {shlex.join(command)}: {exc}", pytrace=False)
 

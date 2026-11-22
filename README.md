@@ -13,9 +13,17 @@ uv run nevis-tiny-search serve --host 127.0.0.1 --port 8000
 
 ### API
 
-Open [Swagger UI](http://127.0.0.1:8000/docs) to try the endpoints. Data lives in
-an in-memory SQLite database and is lost when the server stops. Run a single
-worker; separate processes don't share data.
+Open [Swagger UI](http://127.0.0.1:8000/docs) to try the endpoints. By default
+(`NEVIS_STORE=sqlite`), data lives in an in-memory SQLite database and is lost
+when the server stops. Run a single worker in this mode.
+
+For persistent storage, point the API at an existing PostgreSQL 18+ UTF-8 database.
+The configured user needs permission to create the tables on first startup:
+
+```sh
+NEVIS_STORE=postgres NEVIS_POSTGRES_DSN=postgresql://user:password@localhost/nevis \
+  uv run nevis-tiny-search serve
+```
 
 - `POST /clients` creates a client and returns its randomly generated UUIDv4.
 - `POST /clients/{id}/documents` adds a text document to a client. An unknown
@@ -41,8 +49,11 @@ uv run pytest
 Pytest reports branch coverage for `src/nevis_search`, including code run
 by the server subprocess. The acceptance tests launch the installed
 `nevis-tiny-search serve` command, wait for `GET /health` to return HTTP 200,
-and stop the server with SIGTERM so coverage data can be saved. Use
-`uv run pytest --no-cov` to skip coverage.
+and stop the server with SIGTERM so coverage data can be saved. Only the exact-match
+search test runs against both stores; other API tests use SQLite. The Postgres
+case requires local Docker and starts an isolated
+`postgres:18` container before launching the API. Use `uv run pytest -k 'not postgres'`
+to run without Docker, or `uv run pytest --no-cov` to skip coverage.
 
 Install the Git hooks with `uv run pre-commit install`. Rerun that command if
 only the `pre-commit` hook was previously installed. The `pre-commit` hook runs
@@ -55,7 +66,9 @@ pytest, isort, and Ruff lint and format checks. Run those checks manually with
 uv run pytest -s --no-cov evals/
 ```
 
-The evals run separately from the default test suite. The five original
+The evals run separately from the default test suite. Each suite starts a fresh
+PostgreSQL container, so both the eval command and the `commit-msg` hook require
+local Docker. The five original
 substring checks still compare exact result sets, ignoring order. The
 [Reed ranked eval](doc/advisor-tasks.md#first-eval-batch-three-tasks) tests ten
 queries against a multi-client corpus, scoring the top client or top document

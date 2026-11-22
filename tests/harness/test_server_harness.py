@@ -4,7 +4,18 @@ from textwrap import dedent
 
 import pytest
 
-from tests.harness.server import HOST, running_server, unused_port
+from tests.harness.environment import environment
+from tests.harness.search_api import Client
+from tests.harness.server import HOST, api, running_server, unused_port
+
+
+def test_postgres_environment_survives_api_restart() -> None:
+    with environment("postgres") as env:
+        with api(env) as server, server.client() as search:
+            client = search.create_client(Client.any())
+
+        with api(env) as restarted, restarted.client() as search:
+            assert search.find_client(client.email) == client
 
 
 def test_server_retries_health_and_is_reaped_after_failed_assertion(

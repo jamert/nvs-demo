@@ -1,25 +1,38 @@
 import random
+from collections.abc import Generator
 
 import httpx
 import pytest
 
+from tests.harness.environment import Environment, environment
 from tests.harness.openapi import assert_matches_assignment
-from tests.harness.search_api import Client, ClientBuilder, Document
+from tests.harness.search_api import Client, ClientBuilder, Document, SearchApi
 from tests.harness.server import api
 
 
-def test_match_openapi_spec() -> None:
-    with api() as server, server.client() as search:
-        assert_matches_assignment(search.openapi())
+@pytest.fixture
+def env(request: pytest.FixtureRequest) -> Generator[Environment]:
+    with environment(getattr(request, "param", "sqlite")) as ready:
+        yield ready
 
 
-def test_search_exact_matches() -> None:
-    with api() as server, server.client() as search:
-        client = search.create_client(Client.any())
-        document = search.add_document(client, Document.any(for_=client))
+@pytest.fixture
+def search(env: Environment) -> Generator[SearchApi]:
+    with api(env) as server, server.client() as client:
+        yield client
 
-        assert client == search.find_client(client.email)
-        assert document in search.search_documents(exact_sample_match_query(document))
+
+def test_match_openapi_spec(search: SearchApi) -> None:
+    assert_matches_assignment(search.openapi())
+
+
+@pytest.mark.parametrize("env", ["sqlite", "postgres"], indirect=True)
+def test_search_exact_matches(search: SearchApi) -> None:
+    client = search.create_client(Client.any())
+    document = search.add_document(client, Document.any(for_=client))
+
+    assert client == search.find_client(client.email)
+    assert document in search.search_documents(exact_sample_match_query(document))
 
 
 @pytest.mark.parametrize(
@@ -32,13 +45,12 @@ def test_search_exact_matches() -> None:
     ],
 )
 def test_document_requires_an_existing_client(
-    client: Client, expected_status: int
+    search: SearchApi, client: Client, expected_status: int
 ) -> None:
-    with api() as server, server.client() as search:
-        with pytest.raises(httpx.HTTPStatusError) as error:
-            search.add_document(client, Document.any(for_=client))
+    with pytest.raises(httpx.HTTPStatusError) as error:
+        search.add_document(client, Document.any(for_=client))
 
-        assert error.value.response.status_code == expected_status
+    assert error.value.response.status_code == expected_status
 
 
 def exact_sample_match_query(document: Document) -> str:

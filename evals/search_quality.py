@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from nevis_search.config import Postgres
 from nevis_search.search import (
     Client,
     ClientInput,
@@ -7,6 +8,7 @@ from nevis_search.search import (
     DocumentInput,
     search_factory,
 )
+from tests.harness.environment import postgres_container
 
 from .read_documents import CORPORA, load_documents
 
@@ -44,7 +46,7 @@ class EvalResult:
 
 def evaluate_substrings() -> EvalResult:
     failures: list[str] = []
-    with search_factory() as search:
+    with postgres_container() as dsn, search_factory(Postgres(dsn)) as search:
         client = search.create_client(
             ClientInput(first_name="Test", last_name="Client", email="test@example.com")
         )
@@ -97,7 +99,7 @@ REED_CASES = (
 
 def evaluate() -> EvalResult:
     failures: list[str] = []
-    with search_factory() as search:
+    with postgres_container() as dsn, search_factory(Postgres(dsn)) as search:
         clients = {
             owner: search.create_client(
                 ClientInput(first_name=first, last_name=last, email=email)
