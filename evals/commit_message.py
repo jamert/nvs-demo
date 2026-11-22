@@ -2,7 +2,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from .search_quality import evaluate
+from .search_quality import evaluate, evaluate_substrings
 
 
 def main() -> None:
@@ -20,7 +20,14 @@ def main() -> None:
     if not message:
         return
 
-    result = evaluate()
+    substrings = evaluate_substrings()
+    ranked = evaluate()
+    total = substrings.total + ranked.total
+    passed = total - len(substrings.failures) - len(ranked.failures)
+    summary = (
+        f"{passed}/{total} cases passed "
+        f"(substring: {substrings.summary}; Reed: {ranked.summary})"
+    )
     subprocess.run(
         [
             "git",
@@ -31,15 +38,16 @@ def main() -> None:
             "--if-missing",
             "add",
             "--trailer",
-            f"Search-Eval: {result.summary}",
+            f"Search-Eval: {summary}",
             "--",
             args.message_file,
         ],
         check=True,
     )
-    print(f"Search quality: {result.summary}")
-    for failure in result.failures:
-        print(failure)
+    print(f"Search quality: {summary}")
+    for label, result in (("Substring", substrings), ("Reed", ranked)):
+        for failure in result.failures:
+            print(f"{label}: {failure}")
 
 
 if __name__ == "__main__":

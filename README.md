@@ -62,9 +62,9 @@ queries against a multi-client corpus, scoring the top client or top document
 according to the query’s intent. The current substring engine is not expected
 to pass the ranked suite.
 
-The `commit-msg` hook reports the **Reed ranked eval** in the `Search-Eval`
-trailer. Missed cases lower the score but don't block the commit. The new
-score is not comparable to the old 5-case trailer. Amending a commit updates
-the existing trailer.
+The `commit-msg` hook reports both suites in one trailer, for example
+`Search-Eval: 6/15 cases passed (substring: 5/5 cases passed; Reed: 1/10 cases passed)`.
+Missed cases lower the score but don't block the commit. Amending a commit
+updates the existing trailer.
 
 See the [assignment](doc/assignment.md) and [OpenAPI spec](doc/openapi.yml).
