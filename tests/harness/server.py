@@ -12,6 +12,8 @@ from time import monotonic, sleep
 import httpx
 import pytest
 
+from tests.harness.search_api import SearchApi
+
 HOST = "127.0.0.1"
 
 
@@ -22,6 +24,11 @@ class Server:
 
     def url(self, path: str) -> str:
         return f"http://{HOST}:{self.port}{path}"
+
+    @contextmanager
+    def client(self) -> Generator[SearchApi]:
+        with httpx.Client(base_url=self.url("/"), trust_env=False) as http:
+            yield SearchApi(http)
 
 
 def unused_port() -> int:
