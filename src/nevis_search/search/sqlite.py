@@ -6,6 +6,8 @@ from typing import Self
 
 from .core import Client, Document
 
+__all__ = ["SearchStoreSQLite"]
+
 
 class SearchStoreSQLite:
     def __init__(self, db: sqlite3.Connection) -> None:

@@ -4,6 +4,16 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, EmailStr, Field
 
+__all__ = [
+    "Client",
+    "ClientInput",
+    "ClientNotFound",
+    "Document",
+    "DocumentInput",
+    "Search",
+    "SearchStore",
+]
+
 
 class ClientNotFound(Exception):
     pass

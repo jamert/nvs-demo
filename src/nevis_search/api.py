@@ -17,6 +17,8 @@ from nevis_search.search import (
     search_factory,
 )
 
+__all__ = ["create_app"]
+
 router = APIRouter()
 
 

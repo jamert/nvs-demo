@@ -4,6 +4,8 @@ lazy import uvicorn
 
 lazy from nevis_search.api import create_app
 
+__all__ = ["main"]
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="nevis-tiny-search")

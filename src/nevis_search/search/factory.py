@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from .core import Search
 from .sqlite import SearchStoreSQLite
 
+__all__ = ["search_factory"]
+
 
 @contextmanager
 def search_factory() -> Generator[Search]:
