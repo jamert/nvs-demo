@@ -1,9 +1,9 @@
 import httpx
-from pydantic import BaseModel
+from pydantic import UUID4, BaseModel
 
 
 class Client(BaseModel):
-    id: str
+    id: UUID4
     first_name: str
     last_name: str
     email: str
@@ -18,8 +18,8 @@ class Client(BaseModel):
 
 
 class Document(BaseModel):
-    id: str
-    client_id: str
+    id: UUID4
+    client_id: UUID4
     title: str
     content: str
 
@@ -43,6 +43,11 @@ class Document(BaseModel):
 class SearchApi:
     def __init__(self, http: httpx.Client) -> None:
         self._http = http
+
+    def openapi(self) -> dict[str, object]:
+        response = self._http.get("/openapi.json")
+        assert response.status_code == 200, response.text
+        return response.json()
 
     def create_client(self, payload: dict[str, str]) -> Client:
         response = self._http.post("/clients", json=payload)
