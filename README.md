@@ -55,14 +55,16 @@ pytest, isort, and Ruff lint and format checks. Run those checks manually with
 uv run pytest -s --no-cov evals/
 ```
 
-The eval runs separately from the default test suite. It seeds a fresh in-memory
-`Search` with a fixed document corpus and reports how many queries returned
-exactly the expected documents, ignoring order.
-It lists expected and actual results for any failed case. The initial cases
-cover substring matching, not semantic relevance.
+The evals run separately from the default test suite. The five original
+substring checks still compare exact result sets, ignoring order. The
+[Reed ranked eval](doc/advisor-tasks.md#first-eval-batch-three-tasks) tests ten
+queries against a multi-client corpus, scoring the top client or top document
+according to the query’s intent. The current substring engine is not expected
+to pass the ranked suite.
 
-The `commit-msg` hook runs the same eval and adds a trailer such as
-`Search-Eval: 5/5 cases passed` to the commit message. Missed cases lower the
-score but don't block the commit. Amending a commit updates the existing trailer.
+The `commit-msg` hook reports the **Reed ranked eval** in the `Search-Eval`
+trailer. Missed cases lower the score but don't block the commit. The new
+score is not comparable to the old 5-case trailer. Amending a commit updates
+the existing trailer.
 
 See the [assignment](doc/assignment.md) and [OpenAPI spec](doc/openapi.yml).
