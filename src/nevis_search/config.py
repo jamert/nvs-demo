@@ -2,7 +2,10 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal
 
-type Backend = Literal["sqlite", "postgres"]
+type PostgresApproach = Literal["postgres-substring", "bm25"]
+type SearchApproach = Literal["sqlite-substring"] | PostgresApproach
+
+POSTGRES_APPROACHES: tuple[PostgresApproach, ...] = ("postgres-substring", "bm25")
 
 
 @dataclass(frozen=True)
@@ -13,20 +16,22 @@ class SQLite:
 @dataclass(frozen=True)
 class Postgres:
     dsn: str = field(repr=False)
+    approach: PostgresApproach = "postgres-substring"
 
 
 type Config = SQLite | Postgres
 
 
 def from_env() -> Config:
-    match os.environ.get("NEVIS_STORE", "sqlite"):
-        case "sqlite":
-            return SQLite()
-        case "postgres":
-            if not (dsn := os.environ.get("NEVIS_POSTGRES_DSN")):  # pragma: no cover
-                raise ValueError("NEVIS_POSTGRES_DSN is required for postgres")
-            return Postgres(dsn)
-        case other:  # pragma: no cover
-            raise ValueError(
-                f"Unknown NEVIS_STORE: {other!r} (expected sqlite or postgres)"
-            )
+    if "NEVIS_STORE" in os.environ:
+        raise ValueError("NEVIS_STORE was replaced by NEVIS_SEARCH; see README.md")
+    approach = os.environ.get("NEVIS_SEARCH", "sqlite-substring")
+    if approach == "sqlite-substring":
+        return SQLite()
+    for postgres in POSTGRES_APPROACHES:
+        if approach == postgres:
+            if not (dsn := os.environ.get("NEVIS_POSTGRES_DSN")):
+                raise ValueError(f"NEVIS_POSTGRES_DSN is required for {approach}")
+            return Postgres(dsn, postgres)
+    choices = ", ".join(("sqlite-substring", *POSTGRES_APPROACHES))
+    raise ValueError(f"Unknown NEVIS_SEARCH: {approach!r} (expected {choices})")

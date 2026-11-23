@@ -1,5 +1,7 @@
 import pytest
 
+from nevis_search.config import POSTGRES_APPROACHES, PostgresApproach
+
 from .search_quality import EvalResult, evaluate, evaluate_substrings
 
 
@@ -10,9 +12,11 @@ def report(label: str, result: EvalResult) -> None:
     print(summary)
 
 
-def test_substring_regressions() -> None:
-    report("Substring regressions", evaluate_substrings())
+@pytest.mark.parametrize("approach", POSTGRES_APPROACHES)
+def test_substring_regressions(approach: PostgresApproach) -> None:
+    report(f"{approach} substring regressions", evaluate_substrings(approach))
 
 
-def test_reed_search_quality() -> None:
-    report("Reed ranked search", evaluate())
+@pytest.mark.parametrize("approach", POSTGRES_APPROACHES)
+def test_reed_search_quality(approach: PostgresApproach) -> None:
+    report(f"{approach} Reed ranked search", evaluate(approach))

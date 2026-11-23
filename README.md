@@ -13,15 +13,24 @@ uv run nevis-tiny-search serve --host 127.0.0.1 --port 8000
 
 ### API
 
-Open [Swagger UI](http://127.0.0.1:8000/docs) to try the endpoints. By default
-(`NEVIS_STORE=sqlite`), data lives in an in-memory SQLite database and is lost
-when the server stops. Run a single worker in this mode.
+Open [Swagger UI](http://127.0.0.1:8000/docs) to try the endpoints.
+`NEVIS_SEARCH` selects exactly one search approach for the process:
 
-For persistent storage, point the API at an existing PostgreSQL 18+ UTF-8 database.
-The configured user needs permission to create the tables on first startup:
+| `NEVIS_SEARCH` | Storage | Search |
+|---|---|---|
+| `sqlite-substring` (default) | In-memory SQLite | Case-insensitive substring |
+| `postgres-substring` | PostgreSQL | Case-insensitive substring |
+| `bm25` | PostgreSQL | Exact/literal lookup, then [Okapi BM25](doc/search/bm25.md) |
+
+If you previously used `NEVIS_STORE=sqlite` or `NEVIS_STORE=postgres`, remove it
+and use `NEVIS_SEARCH=sqlite-substring` or `NEVIS_SEARCH=postgres-substring`.
+SQLite data is lost when the process stops; run a single worker in that mode.
+For any PostgreSQL option, use an existing PostgreSQL 18+ UTF-8 database and a
+user that can create tables on first startup. The options use the same record
+schema, so switching approaches does not require re-ingesting documents.
 
 ```sh
-NEVIS_STORE=postgres NEVIS_POSTGRES_DSN=postgresql://user:password@localhost/nevis \
+NEVIS_SEARCH=bm25 NEVIS_POSTGRES_DSN=postgresql://user:password@localhost/nevis \
   uv run nevis-tiny-search serve
 ```
 
@@ -29,8 +38,7 @@ NEVIS_STORE=postgres NEVIS_POSTGRES_DSN=postgresql://user:password@localhost/nev
 - `POST /clients/{id}/documents` adds a text document to a client. An unknown
   client UUID returns HTTP 404; a malformed request returns HTTP 400
 - `GET /search?q=...` returns a JSON array of matching client and document
-  objects, or `[]` when nothing matches. This first version uses case-insensitive
-  substring matching, not semantic search.
+  objects, or `[]` when the selected approach finds no matches.
 
 For example, `GET /search?q=NevisWealth` matches a client with email
 `john.doe@neviswealth.com`; `GET /search?q=Electricity%20account` matches a
@@ -49,11 +57,10 @@ uv run pytest
 Pytest reports branch coverage for `src/nevis_search`, including code run
 by the server subprocess. The acceptance tests launch the installed
 `nevis-tiny-search serve` command, wait for `GET /health` to return HTTP 200,
-and stop the server with SIGTERM so coverage data can be saved. Only the exact-match
-search test runs against both stores; other API tests use SQLite. The Postgres
-case requires local Docker and starts an isolated
-`postgres:18` container before launching the API. Use `uv run pytest -k 'not postgres'`
-to run without Docker, or `uv run pytest --no-cov` to skip coverage.
+and stop the server with SIGTERM so coverage data can be saved. Exact-match
+acceptance runs against every approach; the other API contract tests use SQLite.
+Each PostgreSQL test starts an isolated `postgres:18` Docker container. Use
+`uv run pytest --no-cov` to skip coverage.
 
 Install the Git hooks with `uv run pre-commit install`. Rerun that command if
 only the `pre-commit` hook was previously installed. The `pre-commit` hook runs
@@ -66,18 +73,17 @@ pytest, isort, and Ruff lint and format checks. Run those checks manually with
 uv run pytest -s --no-cov evals/
 ```
 
-The evals run separately from the default test suite. Each suite starts a fresh
-PostgreSQL container, so both the eval command and the `commit-msg` hook require
-local Docker. The five original
-substring checks still compare exact result sets, ignoring order. The
-[Reed ranked eval](doc/advisor-tasks.md#first-eval-batch-three-tasks) tests ten
-queries against a multi-client corpus, scoring the top client or top document
-according to the query’s intent. The current substring engine is not expected
-to pass the ranked suite.
+The quality suite tests each PostgreSQL approach in isolation (not SQLite).
+Both this command and the `commit-msg` hook require local Docker. Use
+`-k bm25` to run just that approach. The five original exact-set checks ignore
+order. The [Reed ranked eval](doc/advisor-tasks.md#first-eval-batch-three-tasks)
+judges the top result of the requested type across ten queries.
 
-The `commit-msg` hook reports both suites in one trailer, for example
-`Search-Eval: 6/15 cases passed (substring: 5/5 cases passed; Reed: 1/10 cases passed)`.
-Missed cases lower the score but don't block the commit. Amending a commit
-updates the existing trailer.
+The `commit-msg` hook writes separate `Search-Eval-Substring`, `Search-Eval-BM25`,
+`Search-Eval-Dense-E5`, and `Search-Eval-SKG` trailers with exact-set and Reed
+scores (or `not integrated` for unavailable approaches). Each installed
+approach runs against the same fixtures regardless of `NEVIS_SEARCH`. Relevance
+misses lower scores but don't block commits; setup errors do. Amending a commit
+updates its trailers, replacing the old combined `Search-Eval` trailer.
 
 See the [assignment](doc/assignment.md) and [OpenAPI spec](doc/openapi.yml).

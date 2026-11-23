@@ -1,4 +1,4 @@
-from collections.abc import Generator
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from typing import Any, Self
 
@@ -6,15 +6,21 @@ import psycopg
 from psycopg.rows import dict_row
 
 from .core import Client, Document
+from .query_routing import route_query
+
+type RankDocuments = Callable[[str, Sequence[Document]], Sequence[Document]]
 
 
 class SearchStorePostgres:
-    def __init__(self, db: psycopg.Connection[dict[str, Any]]) -> None:
+    def __init__(
+        self, db: psycopg.Connection[dict[str, Any]], rank: RankDocuments | None
+    ) -> None:
         self._db = db
+        self._rank = rank
 
     @classmethod
     @contextmanager
-    def connect(cls, dsn: str) -> Generator[Self]:
+    def connect(cls, dsn: str, rank: RankDocuments | None = None) -> Generator[Self]:
         with psycopg.Connection[dict[str, Any]].connect(
             dsn, row_factory=dict_row, autocommit=True
         ) as db:
@@ -37,7 +43,7 @@ class SearchStorePostgres:
                     created_at timestamptz NOT NULL
                 )
             """)
-            yield cls(db)
+            yield cls(db, rank)
 
     def insert_client(self, client: Client) -> None:
         self._db.execute(
@@ -56,6 +62,16 @@ class SearchStorePostgres:
         return result.rowcount != 0
 
     def search(self, query: str) -> list[Client | Document]:
+        if self._rank is not None:
+            clients = self._db.execute("SELECT * FROM clients ORDER BY position")
+            documents = self._db.execute("SELECT * FROM documents ORDER BY position")
+            return route_query(
+                query,
+                [Client.model_validate(row) for row in clients],
+                [Document.model_validate(row) for row in documents],
+                self._rank,
+            )
+
         params = {"term": query.strip().casefold()}
         clients = self._db.execute(
             """SELECT * FROM clients

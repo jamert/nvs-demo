@@ -10,7 +10,7 @@ from tests.harness.server import HOST, api, running_server, unused_port
 
 
 def test_postgres_environment_survives_api_restart() -> None:
-    with environment("postgres") as env:
+    with environment("postgres-substring") as env:
         with api(env) as server, server.client() as search:
             client = search.create_client(Client.any())
 

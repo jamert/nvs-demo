@@ -4,6 +4,7 @@ from collections.abc import Generator
 import httpx
 import pytest
 
+from nevis_search.config import POSTGRES_APPROACHES
 from tests.harness.environment import Environment, environment
 from tests.harness.openapi import assert_matches_assignment
 from tests.harness.search_api import Client, ClientBuilder, Document, SearchApi
@@ -12,7 +13,7 @@ from tests.harness.server import api
 
 @pytest.fixture
 def env(request: pytest.FixtureRequest) -> Generator[Environment]:
-    with environment(getattr(request, "param", "sqlite")) as ready:
+    with environment(getattr(request, "param", "sqlite-substring")) as ready:
         yield ready
 
 
@@ -26,7 +27,9 @@ def test_match_openapi_spec(search: SearchApi) -> None:
     assert_matches_assignment(search.openapi())
 
 
-@pytest.mark.parametrize("env", ["sqlite", "postgres"], indirect=True)
+@pytest.mark.parametrize(
+    "env", ("sqlite-substring", *POSTGRES_APPROACHES), indirect=True
+)
 def test_search_exact_matches(search: SearchApi) -> None:
     client = search.create_client(Client.any())
     document = search.add_document(client, Document.any(for_=client))

@@ -7,7 +7,7 @@ from time import monotonic, sleep
 
 import psycopg
 
-from nevis_search.config import Backend
+from nevis_search.config import SearchApproach
 
 
 @dataclass(frozen=True)
@@ -16,12 +16,14 @@ class Environment:
 
 
 @contextmanager
-def environment(backend: Backend = "sqlite") -> Generator[Environment]:
-    if backend == "postgres":
-        with postgres_container() as dsn:
-            yield Environment({"NEVIS_STORE": backend, "NEVIS_POSTGRES_DSN": dsn})
+def environment(
+    approach: SearchApproach = "sqlite-substring",
+) -> Generator[Environment]:
+    if approach == "sqlite-substring":
+        yield Environment({"NEVIS_SEARCH": approach})
     else:
-        yield Environment({"NEVIS_STORE": backend})
+        with postgres_container() as dsn:
+            yield Environment({"NEVIS_SEARCH": approach, "NEVIS_POSTGRES_DSN": dsn})
 
 
 def _docker(*args: str) -> str:

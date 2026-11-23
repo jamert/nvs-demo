@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from nevis_search.config import Postgres
+from nevis_search.config import Postgres, PostgresApproach
 from nevis_search.search import (
     Client,
     ClientInput,
@@ -44,9 +44,11 @@ class EvalResult:
         return f"{self.total - len(self.failures)}/{self.total} cases passed"
 
 
-def evaluate_substrings() -> EvalResult:
+def evaluate_substrings(
+    approach: PostgresApproach = "postgres-substring",
+) -> EvalResult:
     failures: list[str] = []
-    with postgres_container() as dsn, search_factory(Postgres(dsn)) as search:
+    with postgres_container() as dsn, search_factory(Postgres(dsn, approach)) as search:
         client = search.create_client(
             ClientInput(first_name="Test", last_name="Client", email="test@example.com")
         )
@@ -97,9 +99,9 @@ REED_CASES = (
 )
 
 
-def evaluate() -> EvalResult:
+def evaluate(approach: PostgresApproach = "postgres-substring") -> EvalResult:
     failures: list[str] = []
-    with postgres_container() as dsn, search_factory(Postgres(dsn)) as search:
+    with postgres_container() as dsn, search_factory(Postgres(dsn, approach)) as search:
         clients = {
             owner: search.create_client(
                 ClientInput(first_name=first, last_name=last, email=email)
