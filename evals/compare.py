@@ -1,13 +1,14 @@
 """Compare integrated Postgres search and research controls; emit stable-key JSON."""
 
 import json
+from collections import defaultdict
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from functools import partial
 from math import ceil
 from statistics import median
 from time import perf_counter_ns
-from typing import Literal
+from typing import Literal, TypedDict
 
 from nevis_search.config import POSTGRES_APPROACHES, Postgres, PostgresApproach
 from nevis_search.search import Document, Search, search_factory
@@ -18,8 +19,11 @@ from tests.harness.environment import postgres_container
 from .read_documents import CASES_DIR
 from .search_quality import (
     CLEAN_GROUPS,
+    MATCHED_GROUPS,
+    RANKED_GROUPS,
     REED_CASES,
     TYPO_VARIANTS,
+    CaseResult,
     ExactCase,
     RankedCase,
     run_cases,
@@ -49,6 +53,58 @@ def open_search(mode: Mode) -> Generator[Search]:
         else:
             with search_factory(Postgres(dsn, mode)) as search:
                 yield search
+
+
+class Counts(TypedDict):
+    total: int
+    top1: int
+    hit5: int
+
+
+class TaskReport(TypedDict, total=False):
+    matched: Counts
+    by_client: dict[str, Counts]
+    extras: Counts
+    typos: Counts
+
+
+def counts(rows: Sequence[CaseResult]) -> Counts:
+    return Counts(
+        total=len(rows),
+        top1=sum(row["passed"] for row in rows),
+        hit5=sum(row["hit5"] for row in rows),
+    )
+
+
+def by_task(ranked: dict[str, list[CaseResult]]) -> dict[str, TaskReport]:
+    # Restore the task labels from the case definitions, not the ranked hits.
+    tasks: dict[str, dict[str, list[CaseResult]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    for group, cases in RANKED_GROUPS.items():
+        for case, row in zip(cases, ranked[group], strict=True):
+            assert case.task is not None, f"Missing task: {case.query!r}"
+            tasks[case.task][group].append(row)
+
+    results: dict[str, TaskReport] = {}
+    for task, slices in tasks.items():
+        report: TaskReport = {}
+        matched = {
+            client: slices[client] for client in MATCHED_GROUPS if client in slices
+        }
+        if matched:
+            report["matched"] = counts(
+                [row for rows in matched.values() for row in rows]
+            )
+            report["by_client"] = {
+                client: counts(rows) for client, rows in matched.items()
+            }
+        if "Krag extras" in slices:
+            report["extras"] = counts(slices["Krag extras"])
+        if "Typos" in slices:
+            report["typos"] = counts(slices["Typos"])
+        results[task] = report
+    return results
 
 
 def compare(mode: Mode) -> dict[str, object]:
@@ -87,6 +143,7 @@ def compare(mode: Mode) -> dict[str, object]:
     return {
         "approach": mode,
         "exact_set": sum(row["passed"] for row in exact),
+        "by_task": by_task(ranked),
         **groups,
         "typos_clean_controls": typo_controls,
         "holdout_top1": sum(row["passed"] for row in blind if row["gold_ranks"]),

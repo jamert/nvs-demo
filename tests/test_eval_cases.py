@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from evals.compare import by_task
 from evals.search_quality import (
     AIMEE_CASES,
     CLEAN_CASES,
@@ -13,6 +14,7 @@ from evals.search_quality import (
     ExactCase,
     RankedCase,
     run_cases,
+    run_ranked,
     seed_ranked,
     seed_substrings,
     summarize,
@@ -125,10 +127,39 @@ def test_shared_scoring_preserves_exact_sets_and_rank_within_type() -> None:
     assert summarize(cases, results).passed == 3
 
 
+def test_task_report_keeps_matched_clients_extras_and_typos_separate() -> None:
+    with search_factory(SQLite()) as search:
+        tasks = by_task(run_ranked(search))
+
+    lookup = tasks["client_lookup"]
+    assert "matched" in lookup and "typos" in lookup
+    assert lookup["matched"] == {"total": 3, "top1": 3, "hit5": 3}
+    assert lookup["typos"] == {"total": 2, "top1": 0, "hit5": 0}
+    address = tasks["current_address"]
+    assert "matched" in address and "by_client" in address
+    assert "extras" in address and "typos" in address
+    assert address["matched"]["total"] == 9
+    assert {
+        client: stats["total"] for client, stats in address["by_client"].items()
+    } == {
+        "Reed": 3,
+        "Krag": 3,
+        "Aimee": 3,
+    }
+    assert address["extras"]["total"] == 2
+    assert address["typos"]["total"] == 1
+    assert "matched" not in tasks["equity_vesting"]
+    assert (
+        sum(task["matched"]["total"] for task in tasks.values() if "matched" in task)
+        == 30
+    )
+
+
 def test_typos_keep_the_same_target_and_type_as_the_clean_query() -> None:
     for (query, typo), case in zip(TYPO_VARIANTS.items(), TYPO_CASES, strict=True):
         clean = CLEAN_CASES[query]
         assert case.query == typo
         assert case.expected_key == clean.expected_key
         assert case.result_type is clean.result_type
+        assert case.task == clean.task
         assert case.query != clean.query

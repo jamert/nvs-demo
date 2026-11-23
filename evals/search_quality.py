@@ -72,20 +72,33 @@ class RankedCase:
     query: str
     expected_key: str
     result_type: type[Client | Document] = Document
+    task: str | None = None
 
 
 # Judged from the advisor's task, not the baseline's output. See doc/advisor-tasks.md.
 REED_CASES = (
-    RankedCase("karen reed", "karen", Client),
-    RankedCase("reed address", "karen-electric-current"),
-    RankedCase("reed address proof", "karen-electric-current"),
-    RankedCase("utility bill reed", "karen-electric-current"),
-    RankedCase("reed 401k", "karen-401k-jun"),
-    RankedCase("401k statement reed", "karen-401k-jun"),
-    RankedCase("reed latest 401(k) statement", "karen-401k-jun"),
-    RankedCase("reed authorization", "karen-release-signed"),
-    RankedCase("reed permission to share with accountant", "karen-release-signed"),
-    RankedCase("signed release of information reed", "karen-release-signed"),
+    RankedCase("karen reed", "karen", Client, task="client_lookup"),
+    RankedCase("reed address", "karen-electric-current", task="current_address"),
+    RankedCase("reed address proof", "karen-electric-current", task="current_address"),
+    RankedCase("utility bill reed", "karen-electric-current", task="current_address"),
+    RankedCase("reed 401k", "karen-401k-jun", task="latest_plan_statement"),
+    RankedCase("401k statement reed", "karen-401k-jun", task="latest_plan_statement"),
+    RankedCase(
+        "reed latest 401(k) statement", "karen-401k-jun", task="latest_plan_statement"
+    ),
+    RankedCase(
+        "reed authorization", "karen-release-signed", task="signed_authorization"
+    ),
+    RankedCase(
+        "reed permission to share with accountant",
+        "karen-release-signed",
+        task="signed_authorization",
+    ),
+    RankedCase(
+        "signed release of information reed",
+        "karen-release-signed",
+        task="signed_authorization",
+    ),
 )
 
 
@@ -130,11 +143,27 @@ AIMEE_CASES = match_reed_cases(
 
 # Retain the additional Krag coverage without mixing it into the paired score.
 KRAG_EXTRA_CASES = (
-    RankedCase("jamie krag current electricity bill", "power-current"),
-    RankedCase("jamie krag signed release of tax records", "jamie-release-signed"),
-    RankedCase("jamie krag employer equity vesting schedule", "jamie-rsu-schedule"),
-    RankedCase("aimee smith-krag june gas statement", "gas-current"),
-    RankedCase("aimee smith-krag long-term disability summary", "aimee-disability"),
+    RankedCase(
+        "jamie krag current electricity bill", "power-current", task="current_address"
+    ),
+    RankedCase(
+        "jamie krag signed release of tax records",
+        "jamie-release-signed",
+        task="signed_authorization",
+    ),
+    RankedCase(
+        "jamie krag employer equity vesting schedule",
+        "jamie-rsu-schedule",
+        task="equity_vesting",
+    ),
+    RankedCase(
+        "aimee smith-krag june gas statement", "gas-current", task="current_address"
+    ),
+    RankedCase(
+        "aimee smith-krag long-term disability summary",
+        "aimee-disability",
+        task="disability_coverage",
+    ),
 )
 
 # One mistake per query; keep clean controls, gold keys and result types fixed.
@@ -147,12 +176,8 @@ TYPO_VARIANTS = {
     "jamie krag employer equity vesting schedule": "jamie krag employer equity vesting scheudle",
     "aimee smith-krag long-term disability summary": "aimee smith-krag long-term disabilty summary",
 }
-CLEAN_GROUPS = {
-    "Reed": REED_CASES,
-    "Krag": KRAG_CASES,
-    "Aimee": AIMEE_CASES,
-    "Krag extras": KRAG_EXTRA_CASES,
-}
+MATCHED_GROUPS = {"Reed": REED_CASES, "Krag": KRAG_CASES, "Aimee": AIMEE_CASES}
+CLEAN_GROUPS = {**MATCHED_GROUPS, "Krag extras": KRAG_EXTRA_CASES}
 CLEAN_CASES = {case.query: case for group in CLEAN_GROUPS.values() for case in group}
 TYPO_CASES = tuple(
     replace(CLEAN_CASES[clean], query=typo) for clean, typo in TYPO_VARIANTS.items()
