@@ -2,13 +2,14 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal
 
-type PostgresApproach = Literal["postgres-substring", "bm25", "dense-e5"]
+type PostgresApproach = Literal["postgres-substring", "bm25", "dense-e5", "skg"]
 type SearchApproach = Literal["sqlite-substring"] | PostgresApproach
 
 POSTGRES_APPROACHES: tuple[PostgresApproach, ...] = (
     "postgres-substring",
     "bm25",
     "dense-e5",
+    "skg",
 )
 
 

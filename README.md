@@ -22,6 +22,7 @@ Open [Swagger UI](http://127.0.0.1:8000/docs) to try the endpoints.
 | `postgres-substring` | PostgreSQL | Case-insensitive substring |
 | `bm25` | PostgreSQL | Exact/literal lookup, then [Okapi BM25](doc/search/bm25.md) |
 | `dense-e5` | PostgreSQL | Exact/literal lookup, then [local E5 embeddings](doc/search/dense-e5.md) |
+| `skg` | PostgreSQL | Exact/literal lookup, then [corpus-derived query expansion](doc/search/skg.md) |
 
 If you previously used `NEVIS_STORE=sqlite` or `NEVIS_STORE=postgres`, remove it
 and use `NEVIS_SEARCH=sqlite-substring` or `NEVIS_SEARCH=postgres-substring`.
@@ -84,8 +85,7 @@ judges the top result of the requested type across ten queries.
 
 The `commit-msg` hook writes separate `Search-Eval-Substring`, `Search-Eval-BM25`,
 `Search-Eval-Dense-E5`, and `Search-Eval-SKG` trailers with exact-set and Reed
-scores (or `not integrated` for unavailable approaches). Each installed
-approach runs against the same fixtures regardless of `NEVIS_SEARCH`. Relevance
+scores. Each approach runs against the same fixtures regardless of `NEVIS_SEARCH`. Relevance
 misses lower scores but don't block commits; setup errors do. Amending a commit
 updates its trailers, replacing the old combined `Search-Eval` trailer.
 
