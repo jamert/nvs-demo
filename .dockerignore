@@ -5,4 +5,11 @@
 !README.md
 !src/
 !src/**
+!experiments/
+!experiments/embeddings/
+!experiments/embeddings/pyproject.toml
+!experiments/embeddings/setup.sh
+!experiments/embeddings/uv.lock
+!experiments/embeddings/src/
+!experiments/embeddings/src/**
 **/__pycache__/

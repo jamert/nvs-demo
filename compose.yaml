@@ -1,5 +1,45 @@
 services:
   search:
+    image: nevis-tiny-search:local
     build: .
+    environment:
+      NEVIS_SEARCH: ${NEVIS_SEARCH:-dense-e5}
+      NEVIS_POSTGRES_DSN: postgresql://nevis:nevis@db:5432/nevis
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${NEVIS_HTTP_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - uv
+        - run
+        - --no-project
+        - --offline
+        - --python
+        - /app/.venv/bin/python
+        - python
+        - -c
+        - "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2).close()"
+      interval: 2s
+      timeout: 4s
+      retries: 10
+      start_period: 15s
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: nevis
+      POSTGRES_PASSWORD: nevis
+      POSTGRES_DB: nevis
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, nevis, -d, nevis]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres-data:

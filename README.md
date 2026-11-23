@@ -2,17 +2,42 @@
 
 ### Quick start
 
-With Docker and Compose, start the default in-memory SQLite service:
+Start the API and PostgreSQL 18 with Docker Compose:
 
 ```sh
-docker compose up --build
+docker compose up --build --wait
 ```
 
-Once the server is ready, try the API below in a second terminal. Run
-`docker compose down` to remove the container. Compose does not require a local
-Python install, PostgreSQL, or the Dense E5 helper.
+The API is at `http://127.0.0.1:8000`. Compose defaults to `dense-e5`, which
+had the best overall top-1 score in the [search benchmark](doc/search/expanded-benchmark.md).
+The image installs the locked helper and downloads the checksum-verified model
+at build time. The first build needs internet access; inference runs inside the
+container. No local Python, PostgreSQL, or helper installation is needed.
 
-To run locally instead, use [uv](https://docs.astral.sh/uv/) with Python 3.15.2
+Set `NEVIS_SEARCH` to try another mode, and `NEVIS_HTTP_PORT` to change the
+host port. Compose supplies the database connection; PostgreSQL is not
+published to the host. The built-in credentials are for local use only.
+
+```sh
+NEVIS_SEARCH=bm25 NEVIS_HTTP_PORT=8080 docker compose up --wait
+```
+
+`docker compose down` stops the stack and keeps its PostgreSQL data. Use
+`docker compose down -v` only if you want to delete that data.
+
+To check the containerized API end to end, run the standalone smoke script
+(requires Docker Compose, `curl`, and `jq`, not pytest):
+
+```sh
+./scripts/smoke-compose.sh
+```
+
+It starts a separate stack on an available port, checks readiness, creates a
+client and document, verifies exact and proof-of-address search, and exercises
+the Dense E5 fallback. It removes its own containers and data on exit. The
+script also accepts a `NEVIS_SEARCH` override.
+
+To run directly on your machine instead, use [uv](https://docs.astral.sh/uv/) with Python 3.15.2
 (pinned in `.python-version`):
 
 ```sh
