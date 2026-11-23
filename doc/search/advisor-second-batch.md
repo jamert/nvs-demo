@@ -80,6 +80,9 @@ consume document ranks. `by_task` contains single-target case rows and counts;
 Relevance misses are benchmark results, not failures of this command or of
 ordinary `pytest` and pre-commit. The normal tests validate fixture isolation
 and scoring rules without holding serving modes to these rankings. The old
-benchmark, historical holdout, and commit-trailer score do not include this
-batch. A paired `evals.compare` replay against `57d0e83` matched all legacy
-non-timing output across the five serving modes and both research controls.
+benchmark and historical holdout do not include this batch. The commit
+trailer adds the 22 second-batch queries to the original 47. A single-target
+query counts on a top-1 hit; an activity query counts when both required notes
+are in the top five. False-hit flags remain available in the replay. A paired
+`evals.compare` replay against `57d0e83` matched all legacy non-timing output
+across the five serving modes and both research controls.

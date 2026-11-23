@@ -4,15 +4,18 @@ from unittest.mock import patch
 import pytest
 
 from evals.advisor_second_batch import (
+    ACTIVITY_GROUP,
     ACTIVITY_NOTE_KEYS,
     ACTIVITY_TASK,
     AS_OF_DATE,
     MEETING_DATE,
     SECOND_BATCH_CORPUS,
+    SINGLE_TARGET_GROUP,
     SINGLE_TARGET_TASKS,
     run_second_batch,
     score_activity,
     seed_second_batch,
+    summarize_second_batch,
 )
 from evals.read_documents import CORPORA, load_documents
 from evals.search_quality import seed_ranked
@@ -158,3 +161,12 @@ def test_run_second_batch_scores_full_document_order_without_client_hits() -> No
         assert row["ordered_keys"] == keys
         assert row["gold_ranks"] == {keys[1]: 2, keys[2]: 3}
         assert row["complete_hit5"]
+
+    _, partial_query = ACTIVITY_TASK.queries
+    report["activity"][1] = score_activity(partial_query, keys[:2], fixtures)
+    summary = summarize_second_batch(report)
+    assert summary[SINGLE_TARGET_GROUP].summary == "2/20 cases passed"
+    assert summary[ACTIVITY_GROUP].summary == "1/2 cases passed"
+    assert summary[ACTIVITY_GROUP].failures == (
+        f"{partial_query!r}: found 1/2 notes in top five",
+    )

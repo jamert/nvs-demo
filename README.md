@@ -232,9 +232,12 @@ household queries, and seven
 [typo variants](doc/advisor-tasks.md#krag-and-typo-eval-groups).
 
 The `commit-msg` hook writes separate `Search-Eval-Substring`, `Search-Eval-BM25`,
-`Search-Eval-Dense-E5`, and `Search-Eval-SKG` trailers with separate exact-set,
-Reed, Krag, Aimee, Krag extras, and typo scores. Each approach runs against the same
-fixtures regardless of `NEVIS_SEARCH`.
+`Search-Eval-Dense-E5`, and `Search-Eval-SKG` trailers with one aggregate score
+per approach: 47 original cases plus 22 second-batch cases. The 20 new
+single-document queries count on a top-1 hit; the two activity queries count
+when both required notes are in the top five. The hook prints the group
+breakdown separately. Each approach runs against the same fixtures regardless
+of `NEVIS_SEARCH`.
 Relevance misses lower scores but don't block commits; setup errors do. Amending a commit
 updates its trailers, replacing the old combined `Search-Eval` trailer.
 

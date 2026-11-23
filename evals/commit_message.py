@@ -4,6 +4,7 @@ from pathlib import Path
 
 from nevis_search.config import POSTGRES_APPROACHES
 
+from .advisor_second_batch import ACTIVITY_GROUP, evaluate_second_batch
 from .search_quality import EXACT_GROUP, evaluate
 
 TRAILER_KEYS = {
@@ -31,16 +32,16 @@ def main() -> None:
 
     trailers: list[str] = []
     for approach in POSTGRES_APPROACHES:
-        results = evaluate(approach)
+        results = evaluate(approach) | evaluate_second_batch(approach)
         total = sum(result.total for result in results.values())
         passed = sum(result.passed for result in results.values())
         breakdown = "; ".join(
-            f"{name if name == EXACT_GROUP else name + ' top-1'}: {result.summary}"
+            f"{name if name in (EXACT_GROUP, ACTIVITY_GROUP) else name + ' top-1'}: {result.summary}"
             for name, result in results.items()
         )
-        summary = f"{passed}/{total} cases passed ({breakdown})"
+        summary = f"{passed}/{total} cases passed"
         trailers.extend(("--trailer", f"{TRAILER_KEYS[approach]}: {summary}"))
-        print(f"{approach}: {summary}")
+        print(f"{approach}: {summary} ({breakdown})")
         for label, result in results.items():
             for failure in result.failures:
                 print(f"{approach} {label}: {failure}")

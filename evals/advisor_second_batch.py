@@ -10,9 +10,11 @@ from nevis_search.search import Client, Document, Search
 
 from .compare import Counts, open_search
 from .read_documents import CASES_DIR, FixtureDocument, load_documents
-from .search_quality import seed_ranked
+from .search_quality import EvalResult, seed_ranked
 
 SECOND_BATCH_CORPUS = CASES_DIR / "advisor-second-batch.jsonl"
+SINGLE_TARGET_GROUP = "Second batch single-target"
+ACTIVITY_GROUP = "Second batch activity complete@5"
 MEETING_DATE = date(2025, 6, 10)
 AS_OF_DATE = date(2025, 7, 10)
 
@@ -296,6 +298,33 @@ def run_second_batch(search: Search) -> BatchResult:
             for query in ACTIVITY_TASK.queries
         ],
     }
+
+
+def summarize_second_batch(report: BatchResult) -> dict[str, EvalResult]:
+    single_misses = tuple(
+        f"{row['query']!r}: expected {row['gold_ranks']}, got {row['top5']}"
+        for task in report["by_task"].values()
+        for row in task["cases"]
+        if not row["top1"]
+    )
+    activity = report["activity"]
+    activity_misses = tuple(
+        f"{row['query']!r}: found {row['expected_in_top5']}/"
+        f"{len(row['gold_ranks'])} notes in top five"
+        for row in activity
+        if not row["complete_hit5"]
+    )
+    return {
+        SINGLE_TARGET_GROUP: EvalResult(
+            report["single_target"]["total"], single_misses
+        ),
+        ACTIVITY_GROUP: EvalResult(len(activity), activity_misses),
+    }
+
+
+def evaluate_second_batch(mode: SearchApproach) -> dict[str, EvalResult]:
+    with open_search(mode) as search:
+        return summarize_second_batch(run_second_batch(search))
 
 
 def replay(mode: SearchApproach) -> dict[str, object]:
