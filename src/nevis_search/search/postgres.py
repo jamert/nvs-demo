@@ -10,6 +10,8 @@ from .document_dates import extract_document_date
 from .query_routing import RankDocuments, route_query
 from .query_rules import may_match_query_rule
 
+__all__ = ["SearchStorePostgres"]
+
 
 class SearchStorePostgres:
     def __init__(
