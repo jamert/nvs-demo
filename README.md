@@ -21,6 +21,7 @@ Open [Swagger UI](http://127.0.0.1:8000/docs) to try the endpoints.
 | `sqlite-substring` (default) | In-memory SQLite | Case-insensitive substring |
 | `postgres-substring` | PostgreSQL | Case-insensitive substring |
 | `bm25` | PostgreSQL | Exact/literal lookup, then [Okapi BM25](doc/search/bm25.md) |
+| `dense-e5` | PostgreSQL | Exact/literal lookup, then [local E5 embeddings](doc/search/dense-e5.md) |
 
 If you previously used `NEVIS_STORE=sqlite` or `NEVIS_STORE=postgres`, remove it
 and use `NEVIS_SEARCH=sqlite-substring` or `NEVIS_SEARCH=postgres-substring`.
@@ -60,7 +61,9 @@ by the server subprocess. The acceptance tests launch the installed
 and stop the server with SIGTERM so coverage data can be saved. Exact-match
 acceptance runs against every approach; the other API contract tests use SQLite.
 Each PostgreSQL test starts an isolated `postgres:18` Docker container. Use
-`uv run pytest --no-cov` to skip coverage.
+`uv run pytest --no-cov` to skip coverage. The full suite, quality evaluation,
+and commit hook need the [local Dense E5 setup](experiments/embeddings/README.md).
+Serving any other approach does not require the helper or model.
 
 Install the Git hooks with `uv run pre-commit install`. Rerun that command if
 only the `pre-commit` hook was previously installed. The `pre-commit` hook runs
