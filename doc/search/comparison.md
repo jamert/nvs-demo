@@ -1,5 +1,7 @@
 # Search approaches: integrated comparison
 
+This is the original integration snapshot. See the [expanded benchmark](expanded-benchmark.md) for current Krag and typo results.
+
 **Recommendation:** Keep substring as the default and try BM25 first as an opt-in candidate fallback. BM25 tied dense on the holdout positives, kept the no-match empty, and needs no extra runtime. Dense is the strongest recall challenger on Reed, but neither it nor BM25 establishes that the first result is usable evidence. SKG added one Reed recall hit over its own lexical control and no first-place wins. All three are available through the same [server selector](../../README.md#api); the research controls are not server options.
 
 ## Reproduced results
@@ -64,6 +66,6 @@ uv run --locked pytest -s --no-cov evals/  # nonzero when any ranked case misses
 uv run --locked python -m evals.compare > search-comparison.json
 ```
 
-The [comparison runner](../../evals/compare.py) emits per-query stable keys, ranks, counts, and latency for all four Postgres approaches plus the two research controls. It uses the same seeded inputs and order as the official suite. `Search-Eval-*` trailers record the four official scores in Git history. The method reports describe ranking parameters, footprint, and explanatory diagnostics.
+The [comparison runner](../../evals/compare.py) emits per-query stable keys, ranks, counts, and latency for all four Postgres approaches plus the two research controls. The current runner uses the expanded corpus for official cases and preserves the original corpus for the historical holdout. `Search-Eval-*` trailers record the four official scores in Git history. The method reports describe ranking parameters, footprint, and explanatory diagnostics.
 
 **Next test:** Freeze new households and records (not just rewrites), randomize ingestion order, and include current/old addresses, newer/older statements, signed/draft releases, and missing artifacts. Compare BM25, normalized lexical retrieval, and dense candidates behind the same separately ablated content-derived evidence check. Prefer dense only if it turns extra recall into more usable first results without increasing critical lookup or no-match failures. None of these options implement authorization; use synthetic data only.

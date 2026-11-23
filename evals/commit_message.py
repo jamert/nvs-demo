@@ -4,7 +4,7 @@ from pathlib import Path
 
 from nevis_search.config import POSTGRES_APPROACHES
 
-from .search_quality import evaluate, evaluate_substrings
+from .search_quality import EXACT_GROUP, evaluate
 
 TRAILER_KEYS = {
     "postgres-substring": "Search-Eval-Substring",
@@ -29,19 +29,19 @@ def main() -> None:
     if not message:
         return
 
-    scores: dict[str, str] = {}
+    trailers: list[str] = []
     for approach in POSTGRES_APPROACHES:
-        substrings = evaluate_substrings(approach)
-        ranked = evaluate(approach)
-        total = substrings.total + ranked.total
-        passed = total - len(substrings.failures) - len(ranked.failures)
-        summary = (
-            f"{passed}/{total} cases passed "
-            f"(exact-set: {substrings.summary}; Reed top-1: {ranked.summary})"
+        results = evaluate(approach)
+        total = sum(result.total for result in results.values())
+        passed = sum(result.passed for result in results.values())
+        breakdown = "; ".join(
+            f"{name if name == EXACT_GROUP else name + ' top-1'}: {result.summary}"
+            for name, result in results.items()
         )
-        scores[approach] = summary
+        summary = f"{passed}/{total} cases passed ({breakdown})"
+        trailers.extend(("--trailer", f"{TRAILER_KEYS[approach]}: {summary}"))
         print(f"{approach}: {summary}")
-        for label, result in (("Exact-set", substrings), ("Reed", ranked)):
+        for label, result in results.items():
             for failure in result.failures:
                 print(f"{approach} {label}: {failure}")
 
@@ -62,11 +62,6 @@ def main() -> None:
                 break
         args.message_file.write_bytes(b"".join(lines))
 
-    trailers: list[str] = []
-    for approach, key in TRAILER_KEYS.items():
-        trailers.extend(
-            ("--trailer", f"{key}: {scores.get(approach, 'not integrated')}")
-        )
     subprocess.run(
         [
             "git",

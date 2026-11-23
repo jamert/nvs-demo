@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
+from typing import TypedDict
 
 from nevis_search.config import Postgres, PostgresApproach
 from nevis_search.search import (
@@ -15,9 +17,9 @@ from .read_documents import CORPORA, load_documents
 
 
 @dataclass(frozen=True)
-class SearchCase:
+class ExactCase:
     query: str
-    expected_titles: tuple[str, ...]
+    expected_keys: tuple[str, ...]
 
 
 CORPUS = {
@@ -26,12 +28,13 @@ CORPUS = {
     "Investment report": "The portfolio gained value in the last quarter.",
 }
 
-CASES = (
-    SearchCase("water bill", ("Water bill",)),
-    SearchCase("portfolio gained", ("Investment report",)),
-    SearchCase("  ELECTRICITY ACCOUNT  ", ("Electricity statement",)),
-    SearchCase("service address", ("Electricity statement", "Water bill")),
-    SearchCase("passport", ()),
+EXACT_GROUP = "Exact-set"
+EXACT_CASES = (
+    ExactCase("water bill", ("Water bill",)),
+    ExactCase("portfolio gained", ("Investment report",)),
+    ExactCase("  ELECTRICITY ACCOUNT  ", ("Electricity statement",)),
+    ExactCase("service address", ("Electricity statement", "Water bill")),
+    ExactCase("passport", ()),
 )
 
 
@@ -41,8 +44,12 @@ class EvalResult:
     failures: tuple[str, ...]
 
     @property
+    def passed(self) -> int:
+        return self.total - len(self.failures)
+
+    @property
     def summary(self) -> str:
-        return f"{self.total - len(self.failures)}/{self.total} cases passed"
+        return f"{self.passed}/{self.total} cases passed"
 
 
 def seed_substrings(search: Search) -> dict[str, Client | Document]:
@@ -58,30 +65,6 @@ def seed_substrings(search: Search) -> dict[str, Client | Document]:
             for title, content in CORPUS.items()
         },
     }
-
-
-def evaluate_substrings(
-    approach: PostgresApproach = "postgres-substring",
-) -> EvalResult:
-    failures: list[str] = []
-    with postgres_container() as dsn, search_factory(Postgres(dsn, approach)) as search:
-        records = seed_substrings(search)
-        for case in CASES:
-            results = search.search(case.query)
-            expected_ids = sorted(records[title].id for title in case.expected_titles)
-            if sorted(result.id for result in results) != expected_ids:
-                actual = [
-                    result.title
-                    if isinstance(result, Document)
-                    else f"client: {result.first_name} {result.last_name}"
-                    for result in results
-                ]
-                failures.append(
-                    f"{case.query!r}: expected {list(case.expected_titles)!r}, "
-                    f"got {actual!r}"
-                )
-
-    return EvalResult(total=len(CASES), failures=tuple(failures))
 
 
 @dataclass(frozen=True)
@@ -106,7 +89,93 @@ REED_CASES = (
 )
 
 
-def seed_reed(search: Search) -> dict[str, Client | Document]:
+def match_reed_cases(
+    name: str, counterparts: dict[str, str], *, plan: str = "401(k)"
+) -> tuple[RankedCase, ...]:
+    plain_plan = plan.replace("(", "").replace(")", "")
+    return tuple(
+        replace(
+            case,
+            query=case.query.replace(
+                "karen reed" if case.result_type is Client else "reed", name
+            )
+            .replace("401(k)", plan)
+            .replace("401k", plain_plan),
+            expected_key=counterparts[case.expected_key],
+        )
+        for case in REED_CASES
+    )
+
+
+# Use full names rather than relying on the shared Krag part of both names.
+KRAG_CASES = match_reed_cases(
+    "jamie krag",
+    {
+        "karen": "jamie",
+        "karen-electric-current": "power-current",
+        "karen-401k-jun": "jamie-401k-jun",
+        "karen-release-signed": "jamie-release-signed",
+    },
+)
+AIMEE_CASES = match_reed_cases(
+    "aimee smith-krag",
+    {
+        "karen": "aimee",
+        "karen-electric-current": "gas-current",
+        "karen-401k-jun": "aimee-403b-jun",
+        "karen-release-signed": "aimee-release-signed",
+    },
+    plan="403(b)",
+)
+
+# Retain the additional Krag coverage without mixing it into the paired score.
+KRAG_EXTRA_CASES = (
+    RankedCase("jamie krag current electricity bill", "power-current"),
+    RankedCase("jamie krag signed release of tax records", "jamie-release-signed"),
+    RankedCase("jamie krag employer equity vesting schedule", "jamie-rsu-schedule"),
+    RankedCase("aimee smith-krag june gas statement", "gas-current"),
+    RankedCase("aimee smith-krag long-term disability summary", "aimee-disability"),
+)
+
+# One mistake per query; keep clean controls, gold keys and result types fixed.
+TYPO_VARIANTS = {
+    "karen reed": "karen reeed",  # repeated key
+    "aimee smith-krag": "aimee smith-karg",  # transposed letters
+    "jamie krag latest 401(k) statement": "jamie karg latest 401(k) statement",
+    "utility bill reed": "utility bill reeed",
+    "reed authorization": "reed authoriztion",  # dropped letter
+    "jamie krag employer equity vesting schedule": "jamie krag employer equity vesting scheudle",
+    "aimee smith-krag long-term disability summary": "aimee smith-krag long-term disabilty summary",
+}
+CLEAN_GROUPS = {
+    "Reed": REED_CASES,
+    "Krag": KRAG_CASES,
+    "Aimee": AIMEE_CASES,
+    "Krag extras": KRAG_EXTRA_CASES,
+}
+CLEAN_CASES = {case.query: case for group in CLEAN_GROUPS.values() for case in group}
+TYPO_CASES = tuple(
+    replace(CLEAN_CASES[clean], query=typo) for clean, typo in TYPO_VARIANTS.items()
+)
+RANKED_GROUPS = {**CLEAN_GROUPS, "Typos": TYPO_CASES}
+
+# Keep the archived holdout on its original 23-document corpus.
+POST_HOLDOUT_KEYS = frozenset(
+    {
+        "jamie-release-draft",
+        "jamie-release-signed",
+        "aimee-403b-mar",
+        "aimee-403b-jun",
+        "gas-old-address",
+        "aimee-release-draft",
+        "aimee-release-signed",
+    }
+)
+
+
+def seed_ranked(
+    search: Search, *, expanded: bool = True
+) -> dict[str, Client | Document]:
     clients = {
         owner: search.create_client(
             ClientInput(first_name=first, last_name=last, email=email)
@@ -122,34 +191,101 @@ def seed_reed(search: Search) -> dict[str, Client | Document]:
         for key, fixture in load_documents(CORPORA[corpus]).items():
             if fixture.owner == "household":
                 continue  # The API cannot attach one record to two clients.
+            if not expanded and key in POST_HOLDOUT_KEYS:
+                continue
             records[key] = search.add_document(
                 clients[fixture.owner].id, fixture.to_document_input()
             )
     return records
 
 
-def evaluate(approach: PostgresApproach = "postgres-substring") -> EvalResult:
-    failures: list[str] = []
-    with postgres_container() as dsn, search_factory(Postgres(dsn, approach)) as search:
-        records = seed_reed(search)
-        keys_by_id = {record.id: key for key, record in records.items()}
-        for case in REED_CASES:
-            expected = records[case.expected_key]
-            results = search.search(case.query)
-            # Keep returned order within the requested type. In particular, a
-            # client hit cannot satisfy or displace a document hit in this score.
-            ranked = [
-                record.id for record in results if isinstance(record, case.result_type)
-            ]
-            if ranked[:1] == [expected.id]:
-                continue
+type Case = ExactCase | RankedCase
 
-            rank = ranked.index(expected.id) + 1 if expected.id in ranked else "absent"
-            actual = [keys_by_id[record_id] for record_id in ranked[:5]]
+
+class CaseResult(TypedDict):
+    query: str
+    gold_ranks: dict[str, int | None]
+    top5: list[str]
+    result_count: int
+    passed: bool
+    hit5: bool
+
+
+def run_cases(
+    search: Search, records: dict[str, Client | Document], cases: Sequence[Case]
+) -> list[CaseResult]:
+    keys_by_id = {record.id: key for key, record in records.items()}
+    results: list[CaseResult] = []
+    for case in cases:
+        exact = isinstance(case, ExactCase)
+        gold = case.expected_keys if exact else (case.expected_key,)
+        result_type = None if exact else case.result_type
+        keys = [
+            keys_by_id[row.id]
+            for row in search.search(case.query)
+            if result_type is None or isinstance(row, result_type)
+        ]
+        # First occurrence matters for rank. Exact-set checks also reject duplicates.
+        positions: dict[str, int] = {}
+        for rank, key in enumerate(keys, 1):
+            positions.setdefault(key, rank)
+        ranks = {key: positions.get(key) for key in gold}
+        results.append(
+            CaseResult(
+                query=case.query,
+                gold_ranks=ranks,
+                top5=keys[:5],
+                result_count=len(keys),
+                passed=sorted(keys) == sorted(gold)
+                if exact
+                else keys[:1] == list(gold),
+                hit5=any(rank is not None and rank <= 5 for rank in ranks.values()),
+            )
+        )
+    return results
+
+
+def summarize(cases: Sequence[Case], results: Sequence[CaseResult]) -> EvalResult:
+    failures: list[str] = []
+    for case, result in zip(cases, results, strict=True):
+        if result["passed"]:
+            continue
+        if isinstance(case, ExactCase):
+            failures.append(
+                f"{case.query!r}: expected exact set {list(case.expected_keys)!r}; "
+                f"got {result['result_count']} hits, first five: {result['top5']!r}"
+            )
+        else:
+            rank = result["gold_ranks"][case.expected_key]
             failures.append(
                 f"{case.query!r}: expected top {case.result_type.__name__.lower()} "
-                f"{case.expected_key!r} (rank: {rank}); "
-                f"first five of that type: {actual!r}"
+                f"{case.expected_key!r} (rank: {rank or 'absent'}); "
+                f"first five of that type: {result['top5']!r}"
             )
+    return EvalResult(total=len(cases), failures=tuple(failures))
 
-    return EvalResult(total=len(REED_CASES), failures=tuple(failures))
+
+def run_exact(search: Search) -> list[CaseResult]:
+    return run_cases(search, seed_substrings(search), EXACT_CASES)
+
+
+def run_ranked(search: Search) -> dict[str, list[CaseResult]]:
+    records = seed_ranked(search)
+    return {
+        group: run_cases(search, records, cases)
+        for group, cases in RANKED_GROUPS.items()
+    }
+
+
+def evaluate(approach: PostgresApproach) -> dict[str, EvalResult]:
+    with postgres_container() as dsn, search_factory(Postgres(dsn, approach)) as search:
+        exact = run_exact(search)
+    with postgres_container() as dsn, search_factory(Postgres(dsn, approach)) as search:
+        ranked = run_ranked(search)
+    return {
+        EXACT_GROUP: summarize(EXACT_CASES, exact),
+        **{
+            group: summarize(cases, ranked[group])
+            for group, cases in RANKED_GROUPS.items()
+        },
+    }

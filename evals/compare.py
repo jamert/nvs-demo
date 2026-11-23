@@ -5,30 +5,30 @@ from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from functools import partial
 from math import ceil
-from pathlib import Path
 from statistics import median
 from time import perf_counter_ns
-from typing import Literal, TypedDict
-from uuid import UUID
+from typing import Literal
 
 from nevis_search.config import POSTGRES_APPROACHES, Postgres, PostgresApproach
-from nevis_search.search import Client, Document, Search, search_factory
+from nevis_search.search import Document, Search, search_factory
 from nevis_search.search.postgres import SearchStorePostgres
 from nevis_search.search.skg import rank_documents
 from tests.harness.environment import postgres_container
 
-from .search_quality import CASES, REED_CASES, seed_reed, seed_substrings
+from .read_documents import CASES_DIR
+from .search_quality import (
+    CLEAN_GROUPS,
+    REED_CASES,
+    TYPO_VARIANTS,
+    ExactCase,
+    RankedCase,
+    run_cases,
+    run_exact,
+    run_ranked,
+    seed_ranked,
+)
 
 type Mode = PostgresApproach | Literal["shared-literal", "skg-off"]
-
-
-class CaseResult(TypedDict):
-    query: str
-    gold_ranks: dict[str, int | None]
-    top5: list[str]
-    result_count: int
-    passed: bool
-    hit5: bool
 
 
 def _no_rank(_: str, __: Sequence[Document]) -> list[Document]:
@@ -51,67 +51,44 @@ def open_search(mode: Mode) -> Generator[Search]:
                 yield search
 
 
-def check(
-    search: Search,
-    keys_by_id: dict[UUID, str],
-    query: str,
-    gold: tuple[str, ...],
-    *,
-    result_type: type[Client | Document] | None = None,
-    exact: bool = False,
-) -> CaseResult:
-    keys = [
-        keys_by_id[row.id]
-        for row in search.search(query)
-        if result_type is None or isinstance(row, result_type)
-    ]
-    ranks = {key: keys.index(key) + 1 if key in keys else None for key in gold}
-    return {
-        "query": query,
-        "gold_ranks": ranks,
-        "top5": keys[:5],
-        "result_count": len(keys),
-        "passed": sorted(keys) == sorted(gold) if exact else keys[:1] == list(gold),
-        "hit5": any(rank is not None and rank <= 5 for rank in ranks.values()),
-    }
-
-
 def compare(mode: Mode) -> dict[str, object]:
     with open_search(mode) as search:
-        keys = {row.id: key for key, row in seed_substrings(search).items()}
-        exact = [
-            check(search, keys, c.query, c.expected_titles, exact=True) for c in CASES
-        ]
+        exact = run_exact(search)
     with open_search(mode) as search:
-        keys = {row.id: key for key, row in seed_reed(search).items()}
-        reed = [
-            check(search, keys, c.query, (c.expected_key,), result_type=c.result_type)
-            for c in REED_CASES
-        ]
+        ranked = run_ranked(search)
         elapsed: list[float] = []
         for _ in range(10):
             for c in REED_CASES:
                 start = perf_counter_ns()
                 search.search(c.query)
                 elapsed.append((perf_counter_ns() - start) / 1e6)
-        holdout = json.loads(
-            Path(__file__)
-            .with_name("cases")
-            .joinpath("search-holdout-v1.json")
-            .read_text()
-        )
-        blind = [
-            check(search, keys, c["query"], (c["expected"],), result_type=Document)
-            if c["expected"]
-            else check(search, keys, c["query"], (), exact=True)
-            for c in holdout["cases"]
-        ]
+    # Replay the historical holdout with its original 23 documents.
+    holdout = json.loads((CASES_DIR / "search-holdout-v1.json").read_text())
+    holdout_cases = [
+        ExactCase(row["query"], ())
+        if row["expected"] is None
+        else RankedCase(row["query"], row["expected"])
+        for row in holdout["cases"]
+    ]
+    with open_search(mode) as search:
+        blind = run_cases(search, seed_ranked(search, expanded=False), holdout_cases)
 
+    clean = {row["query"]: row for group in CLEAN_GROUPS for row in ranked[group]}
+    typo_controls = {typo: clean[query] for query, typo in TYPO_VARIANTS.items()}
+    groups = {
+        f"{group.lower().replace(' ', '_')}_{key}": value
+        for group, rows in ranked.items()
+        for key, value in (
+            ("top1", sum(row["passed"] for row in rows)),
+            ("hit5", sum(row["hit5"] for row in rows)),
+            ("cases", rows),
+        )
+    }
     return {
         "approach": mode,
         "exact_set": sum(row["passed"] for row in exact),
-        "reed_top1": sum(row["passed"] for row in reed),
-        "reed_hit5": sum(row["hit5"] for row in reed),
+        **groups,
+        "typos_clean_controls": typo_controls,
         "holdout_top1": sum(row["passed"] for row in blind if row["gold_ranks"]),
         "holdout_hit5": sum(row["hit5"] for row in blind),
         "holdout_no_match_empty": [
@@ -123,7 +100,6 @@ def compare(mode: Mode) -> dict[str, object]:
             "p95": sorted(elapsed)[ceil(0.95 * len(elapsed)) - 1],
         },
         "exact_cases": exact,
-        "reed_cases": reed,
         "holdout_cases": blind,
     }
 

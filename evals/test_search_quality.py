@@ -2,7 +2,7 @@ import pytest
 
 from nevis_search.config import POSTGRES_APPROACHES, PostgresApproach
 
-from .search_quality import EvalResult, evaluate, evaluate_substrings
+from .search_quality import EXACT_GROUP, RANKED_GROUPS, EvalResult, evaluate
 
 
 def report(label: str, result: EvalResult) -> None:
@@ -12,11 +12,24 @@ def report(label: str, result: EvalResult) -> None:
     print(summary)
 
 
-@pytest.mark.parametrize("approach", POSTGRES_APPROACHES)
-def test_substring_regressions(approach: PostgresApproach) -> None:
-    report(f"{approach} substring regressions", evaluate_substrings(approach))
+@pytest.fixture(scope="module", params=POSTGRES_APPROACHES)
+def approach(request: pytest.FixtureRequest) -> PostgresApproach:
+    return request.param
 
 
-@pytest.mark.parametrize("approach", POSTGRES_APPROACHES)
-def test_reed_search_quality(approach: PostgresApproach) -> None:
-    report(f"{approach} Reed ranked search", evaluate(approach))
+@pytest.fixture(scope="module")
+def results(approach: PostgresApproach) -> dict[str, EvalResult]:
+    return evaluate(approach)
+
+
+def test_substring_regressions(
+    approach: PostgresApproach, results: dict[str, EvalResult]
+) -> None:
+    report(f"{approach} substring regressions", results[EXACT_GROUP])
+
+
+@pytest.mark.parametrize("group", RANKED_GROUPS)
+def test_ranked_search_quality(
+    approach: PostgresApproach, group: str, results: dict[str, EvalResult]
+) -> None:
+    report(f"{approach} {group} ranked search", results[group])
