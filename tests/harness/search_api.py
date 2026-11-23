@@ -10,6 +10,7 @@ class Client(BaseModel):
     first_name: str
     last_name: str
     email: str
+    description: str = ""
 
     @staticmethod
     def any() -> Client:
@@ -73,10 +74,14 @@ class SearchApi:
         return Document.model_validate(response.json())
 
     def find_client(self, email: str) -> Client | None:
-        for hit in self._search(email):
-            if hit.get("email") == email:
-                return Client.model_validate(hit)
-        return None
+        return next(
+            (hit for hit in self.search_clients(email) if hit.email == email), None
+        )
+
+    def search_clients(self, query: str) -> list[Client]:
+        return [
+            Client.model_validate(hit) for hit in self._search(query) if "email" in hit
+        ]
 
     def search_documents(self, query: str) -> list[Document]:
         return [

@@ -39,6 +39,101 @@ def test_search_exact_matches(search: SearchApi) -> None:
 
 
 @pytest.mark.parametrize(
+    "env", ("sqlite-substring", *POSTGRES_APPROACHES), indirect=True
+)
+def test_search_proof_of_address_rule(search: SearchApi) -> None:
+    owner = search.create_client(
+        Client.any().model_copy(update={"description": "Address proof requested."})
+    )
+    other = search.create_client(
+        Client.any().model_copy(update={"first_name": "Alex", "last_name": "Smith"})
+    )
+    form = search.add_document(
+        owner,
+        {
+            "title": "Address change form",
+            "content": f"Jane Doe address proof. PROOF-of\tADDRESS. Contact {owner.email}.",
+        },
+    )
+    assert search.search_documents("address proof") == [form]
+
+    other_bill = search.add_document(
+        other, {"title": "Other utility bill", "content": ""}
+    )
+    assert search.search_documents("Jane Doe address proof") == [form]
+
+    body = search.add_document(
+        owner, {"title": "Attachments", "content": "See attached GAS STATEMENT."}
+    )
+    electricity = search.add_document(
+        owner, {"title": "Electricity–statement", "content": ""}
+    )
+    utility = search.add_document(
+        owner,
+        {
+            "title": "April utility bill",
+            "content": "Jane Doe address proof. Utility bill.",
+        },
+    )
+    gas = search.add_document(owner, {"title": "Gas bill", "content": ""})
+    misleading = search.add_document(
+        owner, {"title": "Utility billing notice", "content": ""}
+    )
+
+    assert search.search_clients("address proof") == [owner]
+    assert search.search_documents("address proof") == [
+        utility,
+        other_bill,
+        electricity,
+        gas,
+        body,
+        form,
+    ]
+    assert search.search_documents("  PROOF-of\tADDRESS  ") == [
+        other_bill,
+        electricity,
+        utility,
+        gas,
+        body,
+        form,
+    ]
+    assert search.search_documents("Jane Doe address proof") == [
+        utility,
+        electricity,
+        gas,
+        body,
+        form,
+    ]
+    assert search.search_documents("Doe address proof") == [
+        utility,
+        electricity,
+        gas,
+        body,
+        form,
+    ]
+
+    assert search.search_clients("Jane Doe") == [owner]
+    assert search.search_documents("Jane Doe") == [form, utility]
+    assert search.search_clients(owner.email) == [owner]
+    assert search.search_documents(owner.email) == [form]
+    assert search.search_documents("utility bill") == [other_bill, utility, misleading]
+
+    search.create_client(Client.any().model_copy(update={"first_name": "Sam"}))
+    assert search.search_documents("Doe address proof") == [form, utility]
+
+    constrained = search.add_document(
+        owner, {"title": "Roe proof of address 2025", "content": "A reminder."}
+    )
+    assert search.search_documents("Roe proof of address 2025") == [constrained]
+
+    named = search.create_client(
+        Client.any().model_copy(update={"first_name": "Address", "last_name": "Proof"})
+    )
+    assert search.search_clients("Address Proof") == [owner, named]
+    assert search.search_documents("Address Proof") == [form, utility]
+
+
+@pytest.mark.parametrize(
     ("client", "expected_status"),
     [
         pytest.param(Client.any(), 404, id="unknown-id"),

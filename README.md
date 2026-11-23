@@ -1,7 +1,19 @@
 # Nevis Tiny Search
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.15 or later. You can pin
-an interpreter locally with `uv python pin 3.15.2`.
+### Quick start
+
+With Docker and Compose, start the default in-memory SQLite service:
+
+```sh
+docker compose up --build
+```
+
+Once the server is ready, try the API below in a second terminal. Run
+`docker compose down` to remove the container. Compose does not require a local
+Python install, PostgreSQL, or the Dense E5 helper.
+
+To run locally instead, use [uv](https://docs.astral.sh/uv/) with Python 3.15.2
+(pinned in `.python-version`):
 
 ```sh
 uv sync
@@ -46,6 +58,54 @@ For example, `GET /search?q=NevisWealth` matches a client with email
 `john.doe@neviswealth.com`; `GET /search?q=Electricity%20account` matches a
 document containing `Electricity account statement`.
 
+#### Proof-of-address search
+
+With the server running, these commands create a fictional client, add a
+bill, and find it by intent rather than by its exact wording (requires `jq`):
+
+```sh
+CLIENT_ID=$(curl -fsS http://127.0.0.1:8000/clients \
+  --json '{"first_name":"Jane","last_name":"Doe","email":"jane.doe@example.com"}' \
+  | jq -er '.id')
+curl -fsS "http://127.0.0.1:8000/clients/$CLIENT_ID/documents" \
+  --json '{"title":"April utility bill","content":"Electricity charges for April."}'
+curl -fsS -G http://127.0.0.1:8000/search \
+  --data-urlencode 'q=Jane Doe proof of address'
+```
+
+Example search response (IDs and timestamp vary):
+
+```json
+[
+  {
+    "title": "April utility bill",
+    "content": "Electricity charges for April.",
+    "id": "1e0d26f3-c104-411e-b73b-f1d7c1335cd6",
+    "client_id": "e8c1cecb-9a50-40ef-a7f1-d5217cb92abc",
+    "created_at": "2026-11-23T21:14:03.656096Z"
+  }
+]
+```
+
+All five modes apply the same rule. The query must be `address proof` or
+`proof of address` with no extra words except a uniquely matched full name
+(or surname). The phrase matcher ignores case and treats whitespace and
+punctuation as word separators. The rule does not run for exact name or email
+lookups, ambiguous owners, or additional constraints such as `2025`. When a
+unique owner is found, the document results are limited to that client.
+
+The rule adds documents with `utility bill`, `electricity statement`, `gas
+bill`, or `gas statement` in the title or body, even when there are literal
+matches. It returns each document once, with title cues ahead of body cues
+and ordinary hits last. The selected search mode still supplies ordinary
+hits, and its order is preserved within each tier for those hits. Searching
+for `utility bill` does not trigger the rule in reverse.
+
+A phrase is only a retrieval cue: a form that merely mentions a bill can
+still get promoted, and a form that has no bill phrase can still match
+normally. The rule does not verify addresses, signatures, dates, or which
+bill is most recent.
+
 UUIDs make IDs hard to guess, but this prototype has no authentication or
 authorization. Do not use it with real client data.
 
@@ -60,7 +120,8 @@ Pytest reports branch coverage for `src/nevis_search`, including code run
 by the server subprocess. The acceptance tests launch the installed
 `nevis-tiny-search serve` command, wait for `GET /health` to return HTTP 200,
 and stop the server with SIGTERM so coverage data can be saved. Exact-match
-acceptance runs against every approach; the other API contract tests use SQLite.
+and proof-of-address acceptance run against every approach; the other API
+contract tests use SQLite.
 Each PostgreSQL test starts an isolated `postgres:18` Docker container. Use
 `uv run pytest --no-cov` to skip coverage. The full suite, quality evaluation,
 and commit hook need the [local Dense E5 setup](experiments/embeddings/README.md).

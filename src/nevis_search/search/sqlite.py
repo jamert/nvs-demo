@@ -5,8 +5,16 @@ from contextlib import closing, contextmanager
 from typing import Self
 
 from .core import Client, Document
+from .query_routing import route_query
+from .query_rules import may_match_query_rule
 
 __all__ = ["SearchStoreSQLite"]
+
+
+def _client_from_row(row: sqlite3.Row) -> Client:
+    fields = dict(row)
+    fields["social_links"] = json.loads(fields["social_links"])
+    return Client.model_validate(fields)
 
 
 class SearchStoreSQLite:
@@ -68,7 +76,19 @@ class SearchStoreSQLite:
         )
         return result.rowcount != 0
 
+    def _load_documents(self) -> list[Document]:
+        rows = self._db.execute("SELECT * FROM documents ORDER BY rowid")
+        return [Document.model_validate(dict(row)) for row in rows]
+
     def search(self, query: str) -> list[Client | Document]:
+        if may_match_query_rule(query):
+            rows = self._db.execute("SELECT * FROM clients ORDER BY rowid")
+            routed = route_query(
+                query, [_client_from_row(row) for row in rows], self._load_documents
+            )
+            if routed is not None:
+                return routed
+
         term = query.strip().casefold()
         clients = self._db.execute(
             """SELECT * FROM clients
@@ -84,10 +104,6 @@ class SearchStoreSQLite:
                ORDER BY rowid""",
             (term, term),
         )
-        results: list[Client | Document] = []
-        for row in clients:
-            fields = dict(row)
-            fields["social_links"] = json.loads(fields["social_links"])
-            results.append(Client.model_validate(fields))
+        results: list[Client | Document] = [_client_from_row(row) for row in clients]
         results.extend(Document.model_validate(dict(row)) for row in documents)
         return results

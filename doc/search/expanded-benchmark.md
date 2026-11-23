@@ -1,5 +1,11 @@
 # Expanded search benchmark: Krag and typos
 
+The tables below record the baseline at `8911f9c`, before the shared
+[proof-of-address rule](../../README.md#proof-of-address-search). Replaying on
+a revision with the rule applies it to all replay modes, including the two
+research controls. To measure the rule's effect, run `evals.compare` on both
+revisions and compare case rows by query and stable document key.
+
 The same 30 documents and three fictional clients are seeded for each ranked group. **Krag** and **Aimee** repeat the ten Reed queries against the corresponding records for Jamie Krag and Aimee Smith-Krag. Only the owner and, for Aimee, the retirement plan term (403(b) instead of 401(k)) change. **Krag extras** covers additional Jamie and Aimee records without changing the matched comparison. The [fixture guide](../../evals/README.md) describes the additions to the Krag corpus; the original Reed queries and judgments are unchanged. The [original holdout](comparison.md) still runs separately on its original 23 documents. No ranker was changed for this benchmark.
 
 ## Results by task
@@ -45,6 +51,27 @@ The paired comparison exposes differences hidden by pooling the household cases.
 | `aimee smith-krag long-term disability summary` | `aimee smith-krag long-term disabilty summary` | `aimee-disability` |
 
 None of the four approaches found either misspelled client record. All three ranked approaches survived `scheudle` and `disabilty` with the intact words. Dense alone found the signed release first for `reed authoriztion`. The misspelled owner in `utility bill reeed` lost owner scoping: it can return another client's bill first. That's a reason to evaluate owner resolution separately from fuzzy document matching.
+
+## Shared proof-of-address rule: paired replay
+
+| Search mode | Address proof top-1 / hit@5 before | After |
+|---|---:|---:|
+| SQLite substring | 0 / 0 | 2 / 2 |
+| Postgres substring | 0 / 0 | 2 / 2 |
+| BM25 | 2 / 6 | 4 / 6 |
+| Dense E5 | 5 / 9 | 6 / 9 |
+| SKG | 3 / 9 | 3 / 9 |
+
+Of the nine address-proof queries, only the three containing `address proof`
+changed in any mode. All five modes kept 5/5 exact sets. Client lookup, latest
+statement, signed authorization, extras, typos, and the historical holdout
+were unchanged, including its missing-document case. In particular, the rule
+does not trigger for `evidence of where he lives now`.
+
+For `aimee smith-krag address proof`, the stale record says `gas bill`, while
+the current `gas service statement` lacks a configured phrase. Dense and SKG
+therefore dropped the current bill from first to second. This rule retrieves
+likely document types; it does not establish recency or verify evidence.
 
 ## Replay
 

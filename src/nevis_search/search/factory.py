@@ -8,7 +8,8 @@ from nevis_search.config import Config, Postgres
 from .bm25 import rank_bm25
 from .core import Search
 from .embeddings import DenseRanker, LocalEncoder
-from .postgres import RankDocuments, SearchStorePostgres
+from .postgres import SearchStorePostgres
+from .query_routing import RankDocuments
 from .skg import rank_documents
 from .sqlite import SearchStoreSQLite
 

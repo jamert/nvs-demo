@@ -1,4 +1,4 @@
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any, Self
 
@@ -6,9 +6,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 from .core import Client, Document
-from .query_routing import route_query
-
-type RankDocuments = Callable[[str, Sequence[Document]], Sequence[Document]]
+from .query_routing import RankDocuments, route_query
+from .query_rules import may_match_query_rule
 
 
 class SearchStorePostgres:
@@ -61,16 +60,21 @@ class SearchStorePostgres:
         )
         return result.rowcount != 0
 
+    def _load_documents(self) -> list[Document]:
+        rows = self._db.execute("SELECT * FROM documents ORDER BY position")
+        return [Document.model_validate(row) for row in rows]
+
     def search(self, query: str) -> list[Client | Document]:
-        if self._rank is not None:
+        if self._rank is not None or may_match_query_rule(query):
             clients = self._db.execute("SELECT * FROM clients ORDER BY position")
-            documents = self._db.execute("SELECT * FROM documents ORDER BY position")
-            return route_query(
+            routed = route_query(
                 query,
                 [Client.model_validate(row) for row in clients],
-                [Document.model_validate(row) for row in documents],
+                self._load_documents,
                 self._rank,
             )
+            if routed is not None:
+                return routed
 
         params = {"term": query.strip().casefold()}
         clients = self._db.execute(

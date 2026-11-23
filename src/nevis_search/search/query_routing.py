@@ -1,26 +1,36 @@
-"""Shared query routing for paired ranking experiments (not authorization)."""
+"""Shared query routing for ranked and rule-based search (not authorization)."""
 
 import re
 from collections.abc import Callable, Sequence
 
 from .core import Client, Document
+from .query_rules import add_rule_candidates, match_query_rule, may_match_query_rule
+
+type RankDocuments = Callable[[str, Sequence[Document]], Sequence[Document]]
+
+
+def _literal_documents(candidates: Sequence[Document], phrase: str) -> list[Document]:
+    return [
+        doc
+        for doc in candidates
+        if phrase in doc.title.casefold() or phrase in doc.content.casefold()
+    ]
 
 
 def route_query(
     query: str,
     clients: Sequence[Client],
-    documents: Sequence[Document],
-    rank: Callable[[str, Sequence[Document]], Sequence[Document]],
-) -> list[Client | Document]:
-    """Use identical exact/literal routing before entering an experimental ranker.
+    load_documents: Callable[[], Sequence[Document]],
+    rank: RankDocuments | None = None,
+) -> list[Client | Document] | None:
+    """Return insertion-ordered exact/literal hits or use the selected ranker.
 
-    Rows are in insertion order. Matches on the original client fields remain
-    literal. A unique named owner restricts candidates; ambiguous names do not.
-    Literal document matches take precedence and keep their original exact set.
+    Active rules add candidates to that baseline. With no ranker and no active
+    rule, return None to leave ordinary substring search to the store's SQL.
     """
-    query = query.strip().casefold()
+    original = query = query.strip().casefold()
     if not query:
-        return []
+        return [] if rank is not None else None
     names = [f"{c.first_name} {c.last_name}".casefold() for c in clients]
     client_hits = [
         client
@@ -31,19 +41,11 @@ def route_query(
         )
     ]
 
-    def literal_documents(
-        candidates: Sequence[Document], phrase: str
-    ) -> list[Document]:
-        return [
-            doc
-            for doc in candidates
-            if phrase in doc.title.casefold() or phrase in doc.content.casefold()
-        ]
-
     if "@" in query or query in names:
-        # A client lookup can also occur literally in a document. Preserve
-        # those document hits, but do not add approximate matches.
-        return [*client_hits, *literal_documents(documents, query)]
+        # Exact lookups can also occur literally in document text.
+        if rank is None:
+            return None
+        return [*client_hits, *_literal_documents(load_documents(), query)]
 
     def name_pattern(name: str) -> str:
         return rf"(?<![\w-]){re.escape(name)}(?![\w-])"
@@ -60,13 +62,29 @@ def route_query(
         and re.search(pattern := name_pattern(client.last_name.casefold()), query)
     ]
     owners = full or surname
+    owner_id = None
     if len(owners) == 1:
         i, pattern = owners[0]
         query = re.sub(pattern, " ", query)
         query = " ".join(query.split()).strip(" ,:;–—")
-        documents = [doc for doc in documents if doc.client_id == clients[i].id]
+        owner_id = clients[i].id
+
+    rule = (
+        match_query_rule(query)
+        if len(owners) <= 1 and may_match_query_rule(original)
+        else None
+    )
+    if rank is None and rule is None:
+        return None
     if not query:
         return list(client_hits)
 
-    literal = literal_documents(documents, query)
-    return [*client_hits, *(literal or rank(query, documents))]
+    documents = load_documents()
+    if owner_id is not None:
+        documents = [doc for doc in documents if doc.client_id == owner_id]
+    # Substring baselines use the original term; ranked baselines use the residual.
+    literal = _literal_documents(documents, original if rank is None else query)
+    baseline = literal or (rank(query, documents) if rank is not None else ())
+    if rule is not None:
+        baseline = add_rule_candidates(rule, baseline, documents)
+    return [*client_hits, *baseline]
