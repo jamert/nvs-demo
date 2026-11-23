@@ -4,12 +4,6 @@ default_stages: [pre-commit]
 repos:
   - repo: local
     hooks:
-      - id: pytest
-        name: pytest
-        entry: uv run --locked pytest
-        language: system
-        pass_filenames: false
-        always_run: true
       - id: isort
         name: isort
         entry: uv run --locked isort --check-only --diff .
@@ -25,6 +19,12 @@ repos:
       - id: ruff-format
         name: ruff format
         entry: uv run --locked ruff format --check
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: pytest
+        name: pytest
+        entry: uv run --locked pytest
         language: system
         pass_filenames: false
         always_run: true
