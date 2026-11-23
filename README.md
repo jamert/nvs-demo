@@ -131,6 +131,19 @@ still get promoted, and a form that has no bill phrase can still match
 normally. The rule does not verify addresses, signatures, dates, or which
 bill is most recent.
 
+#### Beneficiary and meeting follow-up search
+
+All five modes recognize `Reed who inherits account ending 0762` as a search
+for a beneficiary designation or transfer-on-death record. When an account
+suffix is included in this form, document results must identify that account
+explicitly (for example, `Account ending: 0762` or `Account ••••0762`); an
+unrelated mention of the digits does not count.
+
+`Jamie Krag what was left to do after the last meeting` and `Jamie Krag last
+appointment follow-ups` also look for follow-up letters and open items. This
+helps find likely records; it does not verify which meeting was most recent
+or whether an item is still open. See the [per-task results](doc/search/advisor-second-batch.md).
+
 #### Latest retirement plan statement search
 
 All five modes recognize queries such as `Jane Doe latest 401(k) statement`

@@ -210,6 +210,72 @@ def test_search_explicit_plan_statement_recency(
 
 
 @pytest.mark.parametrize(
+    "env", ("sqlite-substring", *POSTGRES_APPROACHES), indirect=True
+)
+def test_search_beneficiary_and_follow_up_rules(search: SearchApi) -> None:
+    owner = search.create_client(Client.any())
+    other = search.create_client(
+        Client.any().model_copy(update={"first_name": "Alex", "last_name": "Smith"})
+    )
+    search.add_document(
+        owner,
+        {
+            "title": "Beneficiary designation — wrong account",
+            "content": "Account ending: 0418. Reference number 0762.",
+        },
+    )
+    search.add_document(
+        owner,
+        {
+            "title": "Beneficiary designation — account ending 0762 and 0418",
+            "content": "Account ending: 0762 | Account ending: 0418",
+        },
+    )
+    search.add_document(
+        owner,
+        {"title": "Beneficiary designation — unsigned, no account", "content": ""},
+    )
+    search.add_document(
+        other,
+        {"title": "Beneficiary designation", "content": "Account number: xxxx0762"},
+    )
+    statement = search.add_document(
+        owner,
+        {
+            "title": "Quarterly statement",
+            "content": "Jane Doe who inherits account ending 0762? See the designation.",
+        },
+    )
+    designation = search.add_document(
+        owner, {"title": "Transfer-on-death designation", "content": "Account ••••0762"}
+    )
+    assert search.search_documents("Jane Doe who inherits account ending 0762") == [
+        designation,
+        statement,
+    ]
+    results = search.search_documents(
+        "Doe, who will inherit my account ending in 0762?"
+    )
+    assert results[0] == designation
+    assert all(doc in [designation, statement] for doc in results)
+    assert search.search_documents("Jane Doe who inherits account ending 9000") == []
+
+    search.add_document(other, {"title": "Follow-up letter", "content": "Open items."})
+    query = "what was left to do after the last meeting"
+    note = search.add_document(owner, {"title": "Intake note", "content": query})
+    letter = search.add_document(
+        owner,
+        {"title": "Appointment follow-up letter", "content": "Please send a pay stub."},
+    )
+    results = search.search_documents(f"Jane Doe {query}")
+    assert results[0] == letter
+    assert all(doc in [letter, note] for doc in results)
+    results = search.search_documents("Jane Doe open items from the last meeting")
+    assert results[0] == letter
+    assert all(doc.client_id == owner.id for doc in results)
+
+
+@pytest.mark.parametrize(
     ("client", "expected_status"),
     [
         pytest.param(Client.any(), 404, id="unknown-id"),

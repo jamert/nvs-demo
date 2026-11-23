@@ -1,7 +1,8 @@
 # Second advisor search benchmark
 
-This replay uses the serving code at `57d0e83` and a synthetic review date of
-July 10, 2025. It seeds the existing three clients and 30 documents, plus
+This replay uses the current serving code, including the beneficiary and
+meeting follow-up rules, and a synthetic review date of July 10, 2025. The
+pre-rule baseline is reproducible at `02a59cb`. It seeds the existing three clients and 30 documents, plus
 [21 individually owned records](../../evals/cases/advisor-second-batch.jsonl):
 12 targets and nine distractors. The [22 queries](../advisor-tasks.md#second-eval-batch-remaining-advisor-tasks),
 gold keys, and near-miss reasons were fixed before replay. Fixture dates and
@@ -15,26 +16,30 @@ has two query variants; totals count queries, not independent tasks.
 
 | Advisor task | SQLite substring | Postgres substring | BM25 | Dense E5 | SKG |
 |---|---:|---:|---:|---:|---:|
-| 1. Brokerage beneficiary | 0 / 0 | 0 / 0 | 1 / 2 | 1 / 2 | 1 / 1 |
+| 1. Brokerage beneficiary | 1 / 1 | 1 / 1 | 2 / 2 | 2 / 2 | 2 / 2 |
 | 2. Investment policy | 0 / 0 | 0 / 0 | 1 / 2 | 1 / 2 | 1 / 2 |
 | 4. Completed questionnaire | 0 / 0 | 0 / 0 | 0 / 2 | 0 / 1 | 2 / 2 |
-| 5. Open follow-ups | 0 / 0 | 0 / 0 | 1 / 2 | 1 / 1 | 1 / 2 |
+| 5. Open follow-ups | 2 / 2 | 2 / 2 | 2 / 2 | 2 / 2 | 2 / 2 |
 | 9. In-service withdrawals | 0 / 0 | 0 / 0 | 1 / 2 | 1 / 2 | 2 / 2 |
 | 10. Term life schedule | 0 / 0 | 0 / 0 | 2 / 2 | 2 / 2 | 2 / 2 |
 | 11. In-force VUL illustration | 0 / 0 | 0 / 0 | 0 / 2 | 2 / 2 | 1 / 2 |
 | 12. Disability purchase option | 0 / 0 | 0 / 0 | 2 / 2 | 2 / 2 | 2 / 2 |
 | 13. Agreed services | 0 / 0 | 0 / 0 | 1 / 2 | 1 / 2 | 2 / 2 |
 | 14. Completed benefits review | 0 / 0 | 0 / 0 | 2 / 2 | 2 / 2 | 2 / 2 |
-| **Total (20 queries)** | **0 / 0** | **0 / 0** | **11 / 20** | **13 / 18** | **16 / 19** |
+| **Total (20 queries)** | **3 / 3** | **3 / 3** | **13 / 20** | **15 / 19** | **18 / 20** |
+| *Pre-rule total* | *0 / 0* | *0 / 0* | *11 / 20* | *13 / 18* | *16 / 19* |
 
-BM25 found every target in the top five but put the sales illustration first
-for both VUL queries. Dense E5 put the current ledger first on both. Dense put
-the newer blank questionnaire first for both wordings and the completed form
-11th for `reed latest completed client questionnaire`. It returned no documents
-for `jamie krag what was left to do after the last meeting`. SKG led on top-1
-but put the account 0762 designation eighth for `reed who inherits account
-ending 0762`. All three ranked modes preferred the superseded IPS for
-`reed agreed portfolio allocation limits`.
+All five modes now put the account 0762 designation first for `reed who
+inherits account ending 0762` (previously eighth with SKG), and the follow-up
+letter first for `jamie krag what was left to do after the last meeting`
+(previously absent with Dense E5). The substring modes also recover the letter
+for `jamie krag last appointment follow-ups`. No other query results changed.
+
+BM25 still puts the sales illustration first for both VUL queries, while
+Dense E5 puts the current ledger first on both. Dense puts the newer blank
+questionnaire first for both wordings and the completed form 11th for `reed
+latest completed client questionnaire`. All three ranked modes still prefer
+the superseded IPS for `reed agreed portfolio allocation limits`.
 
 ## Task 6: activity notes
 

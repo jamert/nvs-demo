@@ -3,7 +3,7 @@
 import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from uuid import UUID
 
@@ -14,7 +14,22 @@ from .core import Document
 class QueryRule:
     query_phrases: tuple[str, ...]
     document_phrases: tuple[str, ...]
+    account_suffix: str | None = None
 
+
+_BENEFICIARY_RULE = QueryRule(
+    query_phrases=("who inherits", "who will inherit"),
+    document_phrases=("beneficiary designation", "transfer on death"),
+)
+_ACCOUNT_QUERY = re.compile(
+    r"(?:who inherits|who will inherit) (?:the |my )?account ending (?:in )?(?P<suffix>[0-9]{4})"
+)
+# Accept an explicitly labeled suffix or a masked account identifier, not an
+# arbitrary mention of four digits (e.g. in a date or receipt number).
+_ACCOUNT_REFERENCE = re.compile(
+    r"\baccount(?:\s+(?:ending\b(?:\s+in\b)?\s*:?|number\s*:)|\s*:|(?=\s+[*•x]{2,}))"
+    r"\s*(?:[*•x]{2,}\s*)?([0-9]{4})\b"
+)
 
 _RULES = (
     QueryRule(
@@ -25,6 +40,15 @@ _RULES = (
             "gas bill",
             "gas statement",
         ),
+    ),
+    _BENEFICIARY_RULE,
+    QueryRule(
+        query_phrases=(
+            "last appointment follow ups",
+            "what was left to do after the last meeting",
+            "open items from the last meeting",
+        ),
+        document_phrases=("follow up letter", "open items", "outstanding action items"),
     ),
 )
 
@@ -152,7 +176,16 @@ def may_match_query_rule(query: str) -> bool:
 def match_query_rule(residual: str) -> QueryRule | None:
     # Do not drop any extra words (e.g. an unknown owner or a date constraint).
     phrase = _normalize(residual)
+    if match := _ACCOUNT_QUERY.fullmatch(phrase):
+        return replace(_BENEFICIARY_RULE, account_suffix=match["suffix"])
     return next((rule for rule in _RULES if phrase in rule.query_phrases), None)
+
+
+def _matches_account(doc: Document, suffix: str) -> bool:
+    references = set(
+        _ACCOUNT_REFERENCE.findall(f"{doc.title}\n{doc.content}".casefold())
+    )
+    return references == {suffix}
 
 
 def add_rule_candidates(
@@ -168,6 +201,10 @@ def add_rule_candidates(
             if doc.id in seen:
                 continue
             seen.add(doc.id)
+            if rule.account_suffix is not None and not _matches_account(
+                doc, rule.account_suffix
+            ):
+                continue
             if _contains_phrase(doc.title, rule.document_phrases):
                 title_hits.append(doc)
             elif _contains_phrase(doc.content, rule.document_phrases):
