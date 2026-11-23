@@ -165,9 +165,11 @@ labeled account. Unlabeled versions can be compared when no candidate for
 that client and plan has an account label.
 
 The period end is extracted from the document body on upload. For example,
-`Statement period: April 1–June 30, 2025`, `Period ending: June 30, 2025`,
-`Period ending: 2025-06-30` and `Statement period: 2025-04-01/2025-06-30`
-are supported as standalone lines or pipe-separated fields. Missing,
+`Statement period: Apr. 1–Jun. 30, 2025`, `Period ending: 6/30/2025`,
+`Period ending: 06-30-2025`, and `Statement period: 2025-04-01/2025-06-30`
+are supported as standalone lines or pipe-separated fields. Numeric dates
+with the year last are read as month/day/year and require a four-digit year.
+Missing,
 conflicting, unsupported or invalid labels leave the date unset. The search
 never uses upload dates, unlabeled dates, statement issue dates or due dates
 as substitutes. This metadata is internal; the API has no date input or

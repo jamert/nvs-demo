@@ -19,7 +19,7 @@ def test_sqlite_document_date_round_trip() -> None:
         )
         statement = search.add_document(
             client.id,
-            DocumentInput(title="Statement", content="Period ending: June 30, 2025"),
+            DocumentInput(title="Statement", content="Period ending: 6/30/2025"),
         )
         [stored] = search.search("statement")
         assert isinstance(stored, Document)
@@ -45,7 +45,7 @@ def test_postgres_document_date_migration_and_cli_backfill(
             legacy = search.add_document(
                 client.id,
                 DocumentInput(
-                    title="Legacy Statement", content="Period ending: 2025-03-31"
+                    title="Legacy Statement", content="Period ending: 03/31/2025"
                 ),
             )
             undated = search.add_document(
