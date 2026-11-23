@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import pytest
+
 from nevis_search.search import Client, Document
 from nevis_search.search.query_routing import route_query
 
@@ -41,3 +43,19 @@ def test_route_query_keeps_ranker_order_within_rule_tiers() -> None:
         lambda: [other_bill, *candidates],
         rank,
     ) == [hint_second, hint_first, ordinary_second, ordinary_first]
+
+
+def test_route_query_does_not_rank_blank_or_owner_only_queries() -> None:
+    owner = Client(
+        id=uuid4(), first_name="June", last_name="Reed", email="june@example.com"
+    )
+
+    def load_documents() -> Sequence[Document]:
+        pytest.fail("no documents should be loaded")
+
+    def rank(query: str, documents: Sequence[Document]) -> Sequence[Document]:
+        pytest.fail("no document query should reach the ranker")
+
+    assert route_query(" \t ", [owner], load_documents, rank) == []
+    assert route_query(" \t ", [owner], load_documents) is None
+    assert route_query("Reed", [owner], load_documents, rank) == [owner]

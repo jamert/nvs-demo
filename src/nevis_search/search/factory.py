@@ -34,6 +34,6 @@ def search_factory(config: Config) -> Generator[Search]:
                 rank = DenseRanker(stack.enter_context(LocalEncoder.connect()))
             case "skg":
                 rank = partial(rank_documents, expand=True)
-            case other:
+            case other:  # pragma: no cover - PostgresApproach is exhaustive.
                 assert_never(other)
         yield Search(stack.enter_context(SearchStorePostgres.connect(config.dsn, rank)))

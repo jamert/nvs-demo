@@ -3,8 +3,29 @@ from functools import partial
 from nevis_search.config import Postgres
 from nevis_search.search import ClientInput, DocumentInput, Search, search_factory
 from nevis_search.search.postgres import SearchStorePostgres
-from nevis_search.search.skg import rank_documents, tokenize
+from nevis_search.search.skg import TermIndex, rank_documents, tokenize
 from tests.harness.environment import postgres_container
+
+
+def test_skg_keeps_the_stronger_seed_and_skips_background_associations() -> None:
+    corpus = (
+        "alpha pigment common",
+        "alpha pigment",
+        "beta pigment",
+        "other common",
+        "other common",
+        "other",
+    )
+    index = TermIndex(tuple(map(tokenize, corpus)))
+    edges = index.expansion_edges(tokenize("alpha beta"), set(index.postings))
+
+    assert [edge.term for edge in edges] == ["pigment"]
+    assert edges[0].seeds == ("alpha",)
+    assert edges[0].supporting_docs == {0, 1}
+
+
+def test_skg_with_no_documents_returns_no_results() -> None:
+    assert rank_documents("retirement statement", [], expand=True) == []
 
 
 def test_skg_search_expands_from_corpus_evidence() -> None:
