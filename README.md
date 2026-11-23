@@ -131,6 +131,50 @@ still get promoted, and a form that has no bill phrase can still match
 normally. The rule does not verify addresses, signatures, dates, or which
 bill is most recent.
 
+#### Latest retirement plan statement search
+
+All five modes recognize queries such as `Jane Doe latest 401(k) statement`
+(or `newest` or `current`). `Current` means latest by statement period end,
+not proof of validity. The rule accepts an optional `the`, `401(k)` / `401k`
+or `403(b)` / `403b`, and `statement` or `statements`. A unique full name or
+surname scopes the search to that client. Ambiguous or unknown names, extra
+constraints such as `March 2025`, and exact name and email lookups keep their
+normal behavior.
+
+The cue is removed before retrieval. Documents with clear evidence of the
+requested plan and a statement can join the candidates even if another
+version matched literally. Only dated versions of the same client's plan
+and account are reordered, newest first, in their existing result slots.
+Ties, undated documents and unrelated hits keep their existing order and
+positions. Account labels such as `Account ending: 0418` split versions into
+separate groups; an unlabeled statement is never assumed to belong to a
+labeled account. Unlabeled versions can be compared when no candidate for
+that client and plan has an account label.
+
+The period end is extracted from the document body on upload. For example,
+`Statement period: April 1–June 30, 2025`, `Period ending: June 30, 2025`,
+`Period ending: 2025-06-30` and `Statement period: 2025-04-01/2025-06-30`
+are supported as standalone lines or pipe-separated fields. Missing,
+conflicting, unsupported or invalid labels leave the date unset. The search
+never uses upload dates, unlabeled dates, statement issue dates or due dates
+as substitutes. This metadata is internal; the API has no date input or
+output field for it.
+
+**Existing PostgreSQL data:** startup adds the nullable `document_date`
+column if needed, without scanning or updating document bodies. Existing
+rows remain searchable as undated until backfilled. After building the
+updated Compose image, run this maintenance command explicitly:
+
+```sh
+docker compose run --rm search /app/.venv/bin/nevis-tiny-search backfill-document-dates
+```
+
+Outside Compose, set `NEVIS_POSTGRES_DSN` to the same database and run
+`uv run --locked nevis-tiny-search backfill-document-dates`. The database
+role must own the tables to apply the column migration. The command reports
+how many rows it filled and can be repeated safely: it only fills nulls
+with an unambiguous period end and never overwrites an existing date.
+
 UUIDs make IDs hard to guess, but this prototype has no authentication or
 authorization. Do not use it with real client data.
 
@@ -144,9 +188,9 @@ uv run pytest
 Pytest reports branch coverage for `src/nevis_search`, including code run
 by the server subprocess. The acceptance tests launch the installed
 `nevis-tiny-search serve` command, wait for `GET /health` to return HTTP 200,
-and stop the server with SIGTERM so coverage data can be saved. Exact-match
-and proof-of-address acceptance run against every approach; the other API
-contract tests use SQLite.
+and stop the server with SIGTERM so coverage data can be saved. Exact-match,
+proof-of-address, and latest statement acceptance run against every approach;
+the other API contract tests use SQLite.
 Each PostgreSQL test starts an isolated `postgres:18` Docker container. Use
 `uv run pytest --no-cov` to skip coverage. The full suite, quality evaluation,
 and commit hook need the [local Dense E5 setup](experiments/embeddings/README.md).

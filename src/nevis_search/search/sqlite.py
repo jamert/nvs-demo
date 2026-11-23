@@ -42,7 +42,8 @@ class SearchStoreSQLite:
                     client_id TEXT NOT NULL REFERENCES clients(id),
                     title TEXT NOT NULL,
                     content TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    document_date TEXT
                 );
                 """)
             yield cls(db)
@@ -64,13 +65,14 @@ class SearchStoreSQLite:
 
     def insert_document(self, document: Document) -> bool:
         result = self._db.execute(
-            """INSERT INTO documents (id, client_id, title, content, created_at)
-               SELECT ?, id, ?, ?, ? FROM clients WHERE id = ?""",
+            """INSERT INTO documents (id, client_id, title, content, created_at, document_date)
+               SELECT ?, id, ?, ?, ?, ? FROM clients WHERE id = ?""",
             (
                 str(document.id),
                 document.title,
                 document.content,
                 document.created_at.isoformat(),
+                document.document_date.isoformat() if document.document_date else None,
                 str(document.client_id),
             ),
         )

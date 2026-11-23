@@ -4,7 +4,14 @@ import re
 from collections.abc import Callable, Sequence
 
 from .core import Client, Document
-from .query_rules import add_rule_candidates, match_query_rule, may_match_query_rule
+from .query_rules import (
+    add_rule_candidates,
+    add_statement_candidates,
+    match_query_rule,
+    match_recency_query,
+    may_match_query_rule,
+    rerank_statements,
+)
 
 type RankDocuments = Callable[[str, Sequence[Document]], Sequence[Document]]
 
@@ -74,7 +81,8 @@ def route_query(
         if len(owners) <= 1 and may_match_query_rule(original)
         else None
     )
-    if rank is None and rule is None:
+    recency = match_recency_query(query) if len(owners) <= 1 else None
+    if rank is None and rule is None and recency is None:
         return None
     if not query:
         return list(client_hits)
@@ -82,9 +90,16 @@ def route_query(
     documents = load_documents()
     if owner_id is not None:
         documents = [doc for doc in documents if doc.client_id == owner_id]
-    # Substring baselines use the original term; ranked baselines use the residual.
-    literal = _literal_documents(documents, original if rank is None else query)
+    # Use the original substring term except when a rule adapts retrieval itself.
+    if recency is not None:
+        plan, query = recency
+    literal = _literal_documents(
+        documents, original if rank is None and recency is None else query
+    )
     baseline = literal or (rank(query, documents) if rank is not None else ())
     if rule is not None:
         baseline = add_rule_candidates(rule, baseline, documents)
+    if recency is not None:
+        candidates, accounts = add_statement_candidates(plan, baseline, documents)
+        baseline = rerank_statements(candidates, accounts)
     return [*client_hits, *baseline]

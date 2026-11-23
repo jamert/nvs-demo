@@ -236,38 +236,39 @@ class CaseResult(TypedDict):
     hit5: bool
 
 
+def score_case(case: Case, keys: list[str]) -> CaseResult:
+    exact = isinstance(case, ExactCase)
+    gold = case.expected_keys if exact else (case.expected_key,)
+    # First occurrence matters for rank. Exact-set checks also reject duplicates.
+    positions: dict[str, int] = {}
+    for rank, key in enumerate(keys, 1):
+        positions.setdefault(key, rank)
+    ranks = {key: positions.get(key) for key in gold}
+    return CaseResult(
+        query=case.query,
+        gold_ranks=ranks,
+        top5=keys[:5],
+        result_count=len(keys),
+        passed=sorted(keys) == sorted(gold) if exact else keys[:1] == list(gold),
+        hit5=any(rank is not None and rank <= 5 for rank in ranks.values()),
+    )
+
+
 def run_cases(
     search: Search, records: dict[str, Client | Document], cases: Sequence[Case]
 ) -> list[CaseResult]:
     keys_by_id = {record.id: key for key, record in records.items()}
-    results: list[CaseResult] = []
-    for case in cases:
-        exact = isinstance(case, ExactCase)
-        gold = case.expected_keys if exact else (case.expected_key,)
-        result_type = None if exact else case.result_type
-        keys = [
-            keys_by_id[row.id]
-            for row in search.search(case.query)
-            if result_type is None or isinstance(row, result_type)
-        ]
-        # First occurrence matters for rank. Exact-set checks also reject duplicates.
-        positions: dict[str, int] = {}
-        for rank, key in enumerate(keys, 1):
-            positions.setdefault(key, rank)
-        ranks = {key: positions.get(key) for key in gold}
-        results.append(
-            CaseResult(
-                query=case.query,
-                gold_ranks=ranks,
-                top5=keys[:5],
-                result_count=len(keys),
-                passed=sorted(keys) == sorted(gold)
-                if exact
-                else keys[:1] == list(gold),
-                hit5=any(rank is not None and rank <= 5 for rank in ranks.values()),
-            )
+    return [
+        score_case(
+            case,
+            [
+                keys_by_id[row.id]
+                for row in search.search(case.query)
+                if isinstance(case, ExactCase) or isinstance(row, case.result_type)
+            ],
         )
-    return results
+        for case in cases
+    ]
 
 
 def summarize(cases: Sequence[Case], results: Sequence[CaseResult]) -> EvalResult:

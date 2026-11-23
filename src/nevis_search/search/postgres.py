@@ -6,6 +6,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from .core import Client, Document
+from .document_dates import extract_document_date
 from .query_routing import RankDocuments, route_query
 from .query_rules import may_match_query_rule
 
@@ -40,7 +41,8 @@ class SearchStorePostgres:
                     title text NOT NULL,
                     content text NOT NULL,
                     created_at timestamptz NOT NULL
-                )
+                );
+                ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_date date
             """)
             yield cls(db, rank)
 
@@ -53,12 +55,27 @@ class SearchStorePostgres:
 
     def insert_document(self, document: Document) -> bool:
         result = self._db.execute(
-            """INSERT INTO documents (id, client_id, title, content, created_at)
-               SELECT %(id)s, id, %(title)s, %(content)s, %(created_at)s
+            """INSERT INTO documents (id, client_id, title, content, created_at, document_date)
+               SELECT %(id)s, id, %(title)s, %(content)s, %(created_at)s, %(document_date)s
                FROM clients WHERE id = %(client_id)s""",
-            document.model_dump(),
+            document.model_dump() | {"document_date": document.document_date},
         )
         return result.rowcount != 0
+
+    def backfill_document_dates(self) -> int:
+        updated = 0
+        rows = self._db.execute(
+            "SELECT id, content FROM documents WHERE document_date IS NULL"
+        )
+        for row in rows:
+            if (document_date := extract_document_date(row["content"])) is not None:
+                result = self._db.execute(
+                    """UPDATE documents SET document_date = %s
+                       WHERE id = %s AND document_date IS NULL""",
+                    (document_date, row["id"]),
+                )
+                updated += result.rowcount
+        return updated
 
     def _load_documents(self) -> list[Document]:
         rows = self._db.execute("SELECT * FROM documents ORDER BY position")

@@ -52,6 +52,11 @@ class Document(BaseModel):
         }
 
 
+def _document_from_response(fields: dict[str, object]) -> Document:
+    assert fields.keys() == {"id", "client_id", "title", "content", "created_at"}
+    return Document.model_validate(fields)
+
+
 class SearchApi:
     def __init__(self, http: httpx.Client) -> None:
         self._http = http
@@ -71,7 +76,7 @@ class SearchApi:
         response = self._http.post(f"/clients/{client.id}/documents", json=payload)
         response.raise_for_status()
         assert response.status_code == 201, response.text
-        return Document.model_validate(response.json())
+        return _document_from_response(response.json())
 
     def find_client(self, email: str) -> Client | None:
         return next(
@@ -85,7 +90,7 @@ class SearchApi:
 
     def search_documents(self, query: str) -> list[Document]:
         return [
-            Document.model_validate(hit)
+            _document_from_response(hit)
             for hit in self._search(query)
             if "client_id" in hit
         ]

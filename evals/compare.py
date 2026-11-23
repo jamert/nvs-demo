@@ -1,18 +1,21 @@
-"""Compare integrated Postgres search and research controls; emit stable-key JSON."""
+"""Compare integrated search and research controls; emit stable-key JSON."""
 
 import json
 from collections import defaultdict
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from functools import partial
 from math import ceil
 from statistics import median
 from time import perf_counter_ns
 from typing import Literal, TypedDict
+from unittest.mock import patch
+from uuid import UUID
 
-from nevis_search.config import POSTGRES_APPROACHES, Postgres, PostgresApproach
+from nevis_search.config import POSTGRES_APPROACHES, Postgres, PostgresApproach, SQLite
 from nevis_search.search import Document, Search, search_factory
 from nevis_search.search.postgres import SearchStorePostgres
+from nevis_search.search.query_rules import rerank_statements
 from nevis_search.search.skg import rank_documents
 from tests.harness.environment import postgres_container
 
@@ -29,10 +32,11 @@ from .search_quality import (
     run_cases,
     run_exact,
     run_ranked,
+    score_case,
     seed_ranked,
 )
 
-type Mode = PostgresApproach | Literal["shared-literal", "skg-off"]
+type Mode = PostgresApproach | Literal["sqlite-substring", "shared-literal", "skg-off"]
 
 
 def _no_rank(_: str, __: Sequence[Document]) -> list[Document]:
@@ -41,6 +45,10 @@ def _no_rank(_: str, __: Sequence[Document]) -> list[Document]:
 
 @contextmanager
 def open_search(mode: Mode) -> Generator[Search]:
+    if mode == "sqlite-substring":
+        with search_factory(SQLite()) as search:
+            yield search
+        return
     with postgres_container() as dsn:
         if mode in ("shared-literal", "skg-off"):
             rank = (
@@ -107,6 +115,46 @@ def by_task(ranked: dict[str, list[CaseResult]]) -> dict[str, TaskReport]:
     return results
 
 
+def compare_explicit_recency(search: Search) -> dict[str, object]:
+    cases = [
+        case
+        for group in MATCHED_GROUPS.values()
+        for case in group
+        if case.task == "latest_plan_statement"
+        and set(case.query.split()) & {"latest", "newest", "current"}
+    ]
+    records = seed_ranked(search)
+    keys_by_id = {doc.id: key for key, doc in records.items()}
+    candidates: list[list[str]] = []
+
+    def record(
+        documents: Sequence[Document], accounts_by_id: Mapping[UUID, frozenset[str]]
+    ) -> list[Document]:
+        candidates.append([keys_by_id[doc.id] for doc in documents])
+        return rerank_statements(documents, accounts_by_id)
+
+    # Observe the actual post-retrieval candidates without re-querying or changing ranks.
+    with patch(
+        "nevis_search.search.query_routing.rerank_statements", side_effect=record
+    ):
+        reranked = run_cases(search, records, cases)
+    baseline = [
+        score_case(case, keys) for case, keys in zip(cases, candidates, strict=True)
+    ]
+    return {
+        "gold_present": sum(
+            any(rank is not None for rank in row["gold_ranks"].values())
+            for row in baseline
+        ),
+        "rerank_off": counts(baseline),
+        "rerank_on": counts(reranked),
+        "cases": [
+            {"rerank_off": before, "rerank_on": after}
+            for before, after in zip(baseline, reranked, strict=True)
+        ],
+    }
+
+
 def compare(mode: Mode) -> dict[str, object]:
     with open_search(mode) as search:
         exact = run_exact(search)
@@ -128,6 +176,8 @@ def compare(mode: Mode) -> dict[str, object]:
     ]
     with open_search(mode) as search:
         blind = run_cases(search, seed_ranked(search, expanded=False), holdout_cases)
+    with open_search(mode) as search:
+        recency = compare_explicit_recency(search)
 
     clean = {row["query"]: row for group in CLEAN_GROUPS for row in ranked[group]}
     typo_controls = {typo: clean[query] for query, typo in TYPO_VARIANTS.items()}
@@ -144,6 +194,7 @@ def compare(mode: Mode) -> dict[str, object]:
         "approach": mode,
         "exact_set": sum(row["passed"] for row in exact),
         "by_task": by_task(ranked),
+        "explicit_recency": recency,
         **groups,
         "typos_clean_controls": typo_controls,
         "holdout_top1": sum(row["passed"] for row in blind if row["gold_ranks"]),
@@ -162,7 +213,12 @@ def compare(mode: Mode) -> dict[str, object]:
 
 
 def main() -> None:
-    modes: tuple[Mode, ...] = (*POSTGRES_APPROACHES, "shared-literal", "skg-off")
+    modes: tuple[Mode, ...] = (
+        "sqlite-substring",
+        *POSTGRES_APPROACHES,
+        "shared-literal",
+        "skg-off",
+    )
     print(json.dumps([compare(mode) for mode in modes], indent=2))
 
 

@@ -1,8 +1,10 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Protocol
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, EmailStr, Field
+
+from .document_dates import extract_document_date
 
 __all__ = [
     "Client",
@@ -40,6 +42,7 @@ class Document(DocumentInput):
     id: UUID
     client_id: UUID
     created_at: datetime
+    document_date: date | None = Field(default=None, exclude=True)
 
 
 class SearchStore(Protocol):
@@ -66,6 +69,7 @@ class Search:
             id=uuid4(),
             client_id=client_id,
             created_at=datetime.now(UTC),
+            document_date=extract_document_date(payload.content),
             **payload.model_dump(),
         )
         if not self._store.insert_document(document):

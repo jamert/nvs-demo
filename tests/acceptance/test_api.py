@@ -24,7 +24,9 @@ def search(env: Environment) -> Generator[SearchApi]:
 
 
 def test_match_openapi_spec(search: SearchApi) -> None:
-    assert_matches_assignment(search.openapi())
+    spec = search.openapi()
+    assert_matches_assignment(spec)
+    assert "document_date" not in str(spec)
 
 
 @pytest.mark.parametrize(
@@ -131,6 +133,80 @@ def test_search_proof_of_address_rule(search: SearchApi) -> None:
     )
     assert search.search_clients("Address Proof") == [owner, named]
     assert search.search_documents("Address Proof") == [form, utility]
+
+
+@pytest.mark.parametrize(
+    "env", ("sqlite-substring", *POSTGRES_APPROACHES), indirect=True
+)
+@pytest.mark.parametrize("newest_first", [False, True])
+def test_search_explicit_plan_statement_recency(
+    search: SearchApi, newest_first: bool
+) -> None:
+    owner = search.create_client(Client.any())
+    other = search.create_client(
+        Client.any().model_copy(update={"first_name": "Alex", "last_name": "Smith"})
+    )
+    search.add_document(
+        other,
+        {"title": "401(k) statement", "content": "Period ending: 2029-01-01"},
+    )
+    search.add_document(
+        owner,
+        {"title": "403(b) statement", "content": "Period ending: 2029-01-01"},
+    )
+    search.add_document(
+        owner,
+        {"title": "Utility bill", "content": "Period ending: 2029-01-01"},
+    )
+    march_input = {
+        "title": "March 401(k) statement",
+        "content": (
+            "Jane Doe March 401(k) statement\n"
+            "Jane Doe latest 401(k) statement for March\n"
+            "Account ending: 1234\nPeriod ending: 2025-03-31"
+        ),
+    }
+    june_input = {
+        "title": "June 401(k) statement" if newest_first else "Quarterly statement",
+        "content": (
+            "Plan: Workplace 401(k) | Account ending: 1234\n"
+            "Statement period: April 1–June 30, 2025"
+        ),
+    }
+    first_input, last_input = (
+        (june_input, march_input) if newest_first else (march_input, june_input)
+    )
+    first = search.add_document(owner, first_input)
+    undated = search.add_document(
+        owner,
+        {
+            "title": "Undated 401(k) statement",
+            "content": "Account ending: 1234\nStatement date: 2029-01-01",
+            "document_date": "2030-01-01",
+        },
+    )
+    last = search.add_document(owner, last_input)
+    june, march = (first, last) if newest_first else (last, first)
+    other_account = search.add_document(
+        owner,
+        {
+            "title": "401(k) statement",
+            "content": "Account ending: 5678\nPeriod ending: 2029-01-01",
+        },
+    )
+
+    # The other account and undated row keep their pre-rerank positions.
+    tail = [march, other_account] if newest_first else [other_account, march]
+    for cue in ("latest", "NEWEST", "current"):
+        assert search.search_documents(f"Jane Doe {cue} 401(k) statement") == [
+            june,
+            undated,
+            *tail,
+        ]
+    assert search.search_documents("Jane Doe March 401(k) statement") == [march]
+    assert search.search_documents("Jane Doe latest 401(k) statement for March") == [
+        march
+    ]
 
 
 @pytest.mark.parametrize(
