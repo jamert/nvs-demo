@@ -1,0 +1,11 @@
+{
+  "as_of": "2025-07-10",
+  "corpus": "Official ranked corpus in official ingestion order; no extra records. Held-out queries, not held-out documents.",
+  "cases": [
+    {"query": "jamie krag evidence of where he lives now", "expected": "power-current", "why": "June electricity statement after move; closed prior-address account is stale."},
+    {"query": "jamie krag newest workplace retirement balance", "expected": "jamie-401k-jun", "why": "June 30 statement is newest available at as-of; March and December are stale."},
+    {"query": "jamie krag when do my company shares become mine", "expected": "jamie-rsu-schedule", "why": "Vesting schedule, not already-owned brokerage holdings."},
+    {"query": "aimee smith-krag income protection if unable to work long term", "expected": "aimee-disability", "why": "Own employer long-term disability summary, not Jamie's."},
+    {"query": "aimee smith-krag dental insurance enrollment confirmation", "expected": null, "why": "No dental insurance enrollment confirmation is present; require empty mixed response."}
+  ]
+}

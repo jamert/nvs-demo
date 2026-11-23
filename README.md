@@ -85,8 +85,9 @@ judges the top result of the requested type across ten queries.
 
 The `commit-msg` hook writes separate `Search-Eval-Substring`, `Search-Eval-BM25`,
 `Search-Eval-Dense-E5`, and `Search-Eval-SKG` trailers with exact-set and Reed
-scores. Each approach runs against the same fixtures regardless of `NEVIS_SEARCH`. Relevance
-misses lower scores but don't block commits; setup errors do. Amending a commit
+scores. Each approach runs against the same fixtures regardless of `NEVIS_SEARCH`.
+Relevance misses lower scores but don't block commits; setup errors do. Amending a commit
 updates its trailers, replacing the old combined `Search-Eval` trailer.
 
-See the [assignment](doc/assignment.md) and [OpenAPI spec](doc/openapi.yml).
+See the [final comparison and replay commands](doc/search/comparison.md),
+[assignment](doc/assignment.md), and [OpenAPI spec](doc/openapi.yml).

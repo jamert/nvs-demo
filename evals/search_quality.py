@@ -6,6 +6,7 @@ from nevis_search.search import (
     ClientInput,
     Document,
     DocumentInput,
+    Search,
     search_factory,
 )
 from tests.harness.environment import postgres_container
@@ -44,24 +45,30 @@ class EvalResult:
         return f"{self.total - len(self.failures)}/{self.total} cases passed"
 
 
+def seed_substrings(search: Search) -> dict[str, Client | Document]:
+    client = search.create_client(
+        ClientInput(first_name="Test", last_name="Client", email="test@example.com")
+    )
+    return {
+        "client:test": client,
+        **{
+            title: search.add_document(
+                client.id, DocumentInput(title=title, content=content)
+            )
+            for title, content in CORPUS.items()
+        },
+    }
+
+
 def evaluate_substrings(
     approach: PostgresApproach = "postgres-substring",
 ) -> EvalResult:
     failures: list[str] = []
     with postgres_container() as dsn, search_factory(Postgres(dsn, approach)) as search:
-        client = search.create_client(
-            ClientInput(first_name="Test", last_name="Client", email="test@example.com")
-        )
-        documents = {
-            title: search.add_document(
-                client.id, DocumentInput(title=title, content=content)
-            )
-            for title, content in CORPUS.items()
-        }
-
+        records = seed_substrings(search)
         for case in CASES:
             results = search.search(case.query)
-            expected_ids = sorted(documents[title].id for title in case.expected_titles)
+            expected_ids = sorted(records[title].id for title in case.expected_titles)
             if sorted(result.id for result in results) != expected_ids:
                 actual = [
                     result.title
@@ -99,28 +106,32 @@ REED_CASES = (
 )
 
 
+def seed_reed(search: Search) -> dict[str, Client | Document]:
+    clients = {
+        owner: search.create_client(
+            ClientInput(first_name=first, last_name=last, email=email)
+        )
+        for owner, first, last, email in (
+            ("jamie", "Jamie", "Krag", "jamie.krag@example.com"),
+            ("aimee", "Aimee", "Smith-Krag", "aimee.smith-krag@example.com"),
+            ("karen", "Karen", "Reed", "karen.reed@example.com"),
+        )
+    }
+    records: dict[str, Client | Document] = dict(clients)
+    for corpus in ("krag", "reed"):
+        for key, fixture in load_documents(CORPORA[corpus]).items():
+            if fixture.owner == "household":
+                continue  # The API cannot attach one record to two clients.
+            records[key] = search.add_document(
+                clients[fixture.owner].id, fixture.to_document_input()
+            )
+    return records
+
+
 def evaluate(approach: PostgresApproach = "postgres-substring") -> EvalResult:
     failures: list[str] = []
     with postgres_container() as dsn, search_factory(Postgres(dsn, approach)) as search:
-        clients = {
-            owner: search.create_client(
-                ClientInput(first_name=first, last_name=last, email=email)
-            )
-            for owner, first, last, email in (
-                ("jamie", "Jamie", "Krag", "jamie.krag@example.com"),
-                ("aimee", "Aimee", "Smith-Krag", "aimee.smith-krag@example.com"),
-                ("karen", "Karen", "Reed", "karen.reed@example.com"),
-            )
-        }
-        records: dict[str, Client | Document] = dict(clients)
-        for corpus in ("krag", "reed"):
-            for key, fixture in load_documents(CORPORA[corpus]).items():
-                if fixture.owner == "household":
-                    continue  # The API cannot attach one record to two clients.
-                records[key] = search.add_document(
-                    clients[fixture.owner].id, fixture.to_document_input()
-                )
-
+        records = seed_reed(search)
         keys_by_id = {record.id: key for key, record in records.items()}
         for case in REED_CASES:
             expected = records[case.expected_key]
