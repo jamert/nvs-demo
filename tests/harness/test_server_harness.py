@@ -4,18 +4,20 @@ from textwrap import dedent
 
 import pytest
 
+from nevis_search.config import Config
 from tests.harness.environment import environment
 from tests.harness.search_api import Client
 from tests.harness.server import HOST, api, running_server, unused_port
 
 
-def test_postgres_environment_survives_api_restart() -> None:
-    with environment("postgres-substring") as env:
-        with api(env) as server, server.client() as search:
-            client = search.create_client(Client.any())
+@pytest.mark.parametrize("search_config", ["postgres-substring"], indirect=True)
+def test_postgres_environment_survives_api_restart(search_config: Config) -> None:
+    env = environment(search_config)
+    with api(env) as server, server.client() as search:
+        client = search.create_client(Client.any())
 
-        with api(env) as restarted, restarted.client() as search:
-            assert search.find_client(client.email) == client
+    with api(env) as restarted, restarted.client() as search:
+        assert search.find_client(client.email) == client
 
 
 def test_server_retries_health_and_is_reaped_after_failed_assertion(

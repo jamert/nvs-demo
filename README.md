@@ -203,10 +203,12 @@ uv run pytest
 Pytest reports branch coverage for `src/nevis_search`, including code run
 by the server subprocess. The acceptance tests launch the installed
 `nevis-tiny-search serve` command, wait for `GET /health` to return HTTP 200,
-and stop the server with SIGTERM so coverage data can be saved. Exact-match,
-proof-of-address, and latest statement acceptance run against every approach;
-the other API contract tests use SQLite.
-Each PostgreSQL test starts an isolated `postgres:18` Docker container. Use
+and stop the server with SIGTERM so coverage data can be saved. Exact-match
+HTTP lookup runs against all five approaches; the other API contract tests
+use SQLite. The [search-rule integration tests](tests/integration/test_search_rules.py)
+call the `Search` service directly across all five approaches.
+The acceptance and search-rule integration tests share a `postgres:18`
+container, with an isolated database per PostgreSQL test. Use
 `uv run pytest --no-cov` to skip coverage. The full suite, quality evaluation,
 and commit hook need the [local Dense E5 setup](experiments/embeddings/README.md).
 Serving any other approach does not require the helper or model.

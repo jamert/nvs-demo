@@ -6,8 +6,10 @@ from secrets import token_hex
 from time import monotonic, sleep
 
 import psycopg
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 
-from nevis_search.config import SearchApproach
+from nevis_search.config import Config, Postgres
 
 
 @dataclass(frozen=True)
@@ -15,15 +17,26 @@ class Environment:
     envvars: dict[str, str] = field(repr=False)
 
 
+def environment(config: Config) -> Environment:
+    if isinstance(config, Postgres):
+        return Environment(
+            {"NEVIS_SEARCH": config.approach, "NEVIS_POSTGRES_DSN": config.dsn}
+        )
+    return Environment({"NEVIS_SEARCH": "sqlite-substring"})
+
+
 @contextmanager
-def environment(
-    approach: SearchApproach = "sqlite-substring",
-) -> Generator[Environment]:
-    if approach == "sqlite-substring":
-        yield Environment({"NEVIS_SEARCH": approach})
-    else:
-        with postgres_container() as dsn:
-            yield Environment({"NEVIS_SEARCH": approach, "NEVIS_POSTGRES_DSN": dsn})
+def postgres_database(server_dsn: str) -> Generator[str]:
+    """Give a test an empty database on a shared PostgreSQL server."""
+    name = f"test_{token_hex(8)}"
+    with psycopg.connect(server_dsn, autocommit=True) as admin:
+        admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+        try:
+            yield make_conninfo(server_dsn, dbname=name)
+        finally:
+            admin.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
+            )
 
 
 def _docker(*args: str) -> str:
