@@ -36,4 +36,9 @@ def search_factory(config: Config) -> Generator[Search]:
                 rank = partial(rank_documents, expand=True)
             case other:  # pragma: no cover - PostgresApproach is exhaustive.
                 assert_never(other)
-        yield Search(stack.enter_context(SearchStorePostgres.connect(config.dsn, rank)))
+        store = stack.enter_context(
+            SearchStorePostgres.connect(
+                config.dsn, rank, append_ranked_to_literal=config.approach == "dense-e5"
+            )
+        )
+        yield Search(store)

@@ -63,6 +63,11 @@ _RECENCY_CUE_PATTERN = re.compile(_RECENCY_CUE)
 _RECENCY_QUERY = re.compile(
     rf"(?:the\s+)?{_RECENCY_CUE}\s+(?P<plan>{_PLAN_TEXT})\s+statements?"
 )
+_EXPLICIT_PERIOD = re.compile(
+    r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+    r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|"
+    r"dec(?:ember)?|[12][0-9]{3})\b"
+)
 _STATEMENT_TITLE = re.compile(r"\bstatement\b")
 _STATEMENT_HEADING = re.compile(rf"{_PLAN_TEXT}\s+statement\b")
 _PLAN_LABEL = re.compile(r"plan(?: type)?\s*:")
@@ -77,6 +82,15 @@ def match_recency_query(residual: str) -> tuple[str, str] | None:
         plan = match["plan"]
         return _plan_key(plan), f"{plan} statement"
     return None
+
+
+def has_explicit_statement_period(query: str) -> bool:
+    """Detect a month or year token in a 401(k) or 403(b) statement query."""
+    return bool(
+        _PLAN.search(query)
+        and re.search(r"\bstatements?\b", query)
+        and _EXPLICIT_PERIOD.search(query)
+    )
 
 
 def _statement_account_key(field: str) -> str | None:

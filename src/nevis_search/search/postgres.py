@@ -15,14 +15,25 @@ __all__ = ["SearchStorePostgres"]
 
 class SearchStorePostgres:
     def __init__(
-        self, db: psycopg.Connection[dict[str, Any]], rank: RankDocuments | None
+        self,
+        db: psycopg.Connection[dict[str, Any]],
+        rank: RankDocuments | None,
+        *,
+        append_ranked_to_literal: bool = False,
     ) -> None:
         self._db = db
         self._rank = rank
+        self._append_ranked_to_literal = append_ranked_to_literal
 
     @classmethod
     @contextmanager
-    def connect(cls, dsn: str, rank: RankDocuments | None = None) -> Generator[Self]:
+    def connect(
+        cls,
+        dsn: str,
+        rank: RankDocuments | None = None,
+        *,
+        append_ranked_to_literal: bool = False,
+    ) -> Generator[Self]:
         with psycopg.Connection[dict[str, Any]].connect(
             dsn, row_factory=dict_row, autocommit=True
         ) as db:
@@ -46,7 +57,7 @@ class SearchStorePostgres:
                 );
                 ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_date date
             """)
-            yield cls(db, rank)
+            yield cls(db, rank, append_ranked_to_literal=append_ranked_to_literal)
 
     def insert_client(self, client: Client) -> None:
         self._db.execute(
@@ -93,6 +104,7 @@ class SearchStorePostgres:
                 [Client.model_validate(row) for row in clients],
                 self._load_documents,
                 self._rank,
+                append_ranked_to_literal=self._append_ranked_to_literal,
                 observe_recency=observe_recency,
             )
             if routed is not None:

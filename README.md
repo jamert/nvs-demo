@@ -59,8 +59,16 @@ Open [Swagger UI](http://127.0.0.1:8000/docs) to try the endpoints.
 | `sqlite-substring` (default) | In-memory SQLite | Case-insensitive substring |
 | `postgres-substring` | PostgreSQL | Case-insensitive substring |
 | `bm25` | PostgreSQL | Exact/literal lookup, then [Okapi BM25](doc/search/bm25.md) |
-| `dense-e5` | PostgreSQL | Exact/literal lookup, then [local E5 embeddings](doc/search/dense-e5.md) |
+| `dense-e5` | PostgreSQL | Literal document matches first, plus [local E5 embedding matches](doc/search/dense-e5.md) |
 | `skg` | PostgreSQL | Exact/literal lookup, then [corpus-derived query expansion](doc/search/skg.md) |
+
+For ordinary Dense E5 queries, literal document hits stay in insertion order;
+semantic hits at or above the cutoff follow in score order, without repeating
+document IDs. Both use the same candidate set, restricted to the resolved owner
+if there is one. Exact email/name, blank and owner-only queries do not rank
+documents. Recognized search rules and 401(k)/403(b) statement queries with an
+explicit month or year retain the prior behavior of ranking only if there are
+no literal hits.
 
 If you previously used `NEVIS_STORE=sqlite` or `NEVIS_STORE=postgres`, remove it
 and use `NEVIS_SEARCH=sqlite-substring` or `NEVIS_SEARCH=postgres-substring`.

@@ -2,11 +2,14 @@
 
 import re
 from collections.abc import Callable, Sequence
+from itertools import chain
+from uuid import UUID
 
 from .core import Client, Document, RecencyObserver, RecencyTrace
 from .query_rules import (
     add_rule_candidates,
     add_statement_candidates,
+    has_explicit_statement_period,
     match_query_rule,
     match_recency_query,
     may_match_query_rule,
@@ -30,12 +33,13 @@ def route_query(
     load_documents: Callable[[], Sequence[Document]],
     rank: RankDocuments | None = None,
     *,
+    append_ranked_to_literal: bool = False,
     observe_recency: RecencyObserver | None = None,
 ) -> list[Client | Document] | None:
-    """Return insertion-ordered exact/literal hits or use the selected ranker.
+    """Use literal hits before ranking, or append ranked hits for ordinary queries.
 
-    Active rules add candidates to that baseline. With no ranker and no active
-    rule, return None to leave ordinary substring search to the store's SQL.
+    Active rules and explicit statement periods keep the literal-or-ranked
+    baseline. With no ranker and no active rule, leave ordinary search to SQL.
     """
     original = query = query.strip().casefold()
     if not query:
@@ -98,6 +102,18 @@ def route_query(
     literal = _literal_documents(
         documents, original if rank is None and recency is None else query
     )
+    if (
+        append_ranked_to_literal
+        and rank is not None
+        and rule is None
+        and recency is None
+        and not has_explicit_statement_period(query)
+    ):
+        merged: dict[UUID, Document] = {}
+        for doc in chain(literal, rank(query, documents)):
+            merged.setdefault(doc.id, doc)
+        return [*client_hits, *merged.values()]
+
     baseline = literal or (rank(query, documents) if rank is not None else ())
     if rule is not None:
         baseline = add_rule_candidates(rule, baseline, documents)
