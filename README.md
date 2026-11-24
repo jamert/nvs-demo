@@ -8,7 +8,7 @@ A REST API for finding clients by name, email, or description and searching thei
 docker compose up --build --wait
 ```
 
-Open [Swagger UI](http://127.0.0.1:8000/docs). Compose starts PostgreSQL 18 and uses `dense-e5` by default. The first build needs internet access to fetch dependencies and the model; inference runs locally in the container.
+Open [Swagger UI](http://127.0.0.1:8000/docs). Compose starts PostgreSQL 18 and runs Dense E5 (`dense-e5`), the recommended search mode. The first build needs internet access to fetch dependencies and the model; inference runs locally in the container.
 
 Set `NEVIS_SEARCH` to select a different search mode or `NEVIS_HTTP_PORT` to change the host port. `docker compose down` stops the stack and keeps its data; `docker compose down -v` deletes it.
 
@@ -68,6 +68,8 @@ Example search response:
 `GET /search?q=NevisWealth` finds Jane by partial email. `GET /search?q=utility%20bill` searches across clients without naming an owner.
 
 ### Search modes
+
+Use `dense-e5` for the demo. All other modes are experimental alternatives for comparison.
 
 | `NEVIS_SEARCH` | Storage | Search |
 |---|---|---|
