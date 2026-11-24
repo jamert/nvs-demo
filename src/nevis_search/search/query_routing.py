@@ -7,6 +7,7 @@ from uuid import UUID
 
 from .core import Client, Document, RecencyObserver, RecencyTrace
 from .query_rules import (
+    QueryRule,
     add_rule_candidates,
     add_statement_candidates,
     has_explicit_statement_period,
@@ -25,6 +26,12 @@ def _literal_documents(candidates: Sequence[Document], phrase: str) -> list[Docu
         for doc in candidates
         if phrase in doc.title.casefold() or phrase in doc.content.casefold()
     ]
+
+
+def _without_owner(query: str, name: str) -> str | None:
+    pattern = rf"(?<![\w-]){re.escape(name)}(?![\w-])"
+    residual, count = re.subn(pattern, " ", query)
+    return " ".join(residual.split()).strip(" ,:;–—") if count else None
 
 
 def route_query(
@@ -60,34 +67,45 @@ def route_query(
             return None
         return [*client_hits, *_literal_documents(load_documents(), query)]
 
-    def name_pattern(name: str) -> str:
-        return rf"(?<![\w-]){re.escape(name)}(?![\w-])"
+    may_match_rule = may_match_query_rule(original)
 
-    full = [
-        (i, name_pattern(name))
-        for i, name in enumerate(names)
-        if re.search(name_pattern(name), query)
-    ]
-    surname = [
-        (i, pattern)
-        for i, client in enumerate(clients)
-        if client.last_name.strip()
-        and re.search(pattern := name_pattern(client.last_name.casefold()), query)
-    ]
-    owners = full or surname
+    def match_rules(phrase: str) -> tuple[QueryRule | None, tuple[str, str] | None]:
+        return (
+            match_query_rule(phrase) if may_match_rule else None,
+            match_recency_query(phrase),
+        )
+
+    # A complete rule phrase is not an owner reference, even if it contains a name.
+    rule, recency = match_rules(original)
     owner_id = None
-    if len(owners) == 1:
-        i, pattern = owners[0]
-        query = re.sub(pattern, " ", query)
-        query = " ".join(query.split()).strip(" ,:;–—")
-        owner_id = clients[i].id
-
-    rule = (
-        match_query_rule(query)
-        if len(owners) <= 1 and may_match_query_rule(original)
-        else None
-    )
-    recency = match_recency_query(query) if len(owners) <= 1 else None
+    if rule is None and recency is None:
+        full_names = [
+            (client.id, residual)
+            for client, name in zip(clients, names, strict=True)
+            if (residual := _without_owner(original, name)) is not None
+        ]
+        if len(full_names) == 1:
+            owner_id, query = full_names[0]
+            rule, recency = match_rules(query)
+        elif not full_names:
+            surnames = [
+                (client.id, residual)
+                for client in clients
+                if client.last_name.strip()
+                and (residual := _without_owner(original, client.last_name.casefold()))
+                is not None
+            ]
+            if len(surnames) == 1 and surnames[0][1] == "":
+                query = ""  # Keep surname-only client lookup.
+            elif may_match_rule:
+                # A surname scopes document search only if the remaining rule matches.
+                qualified = [
+                    (client_id, residual, *matches)
+                    for client_id, residual in surnames
+                    if any(matches := match_rules(residual))
+                ]
+                if len(qualified) == 1:
+                    owner_id, query, rule, recency = qualified[0]
     if rank is None and rule is None and recency is None:
         return None
     if not query:

@@ -21,13 +21,19 @@ literal lookup and owner scoping. An ordinary document query returns literal
 hits first in insertion order, then semantic hits in descending score order,
 keeping only the first hit for each document ID. The ranker searches the full
 candidate set allowed by owner scoping, even when the query has literal hits.
+For an ordinary document query, only a unique full-name match scopes retrieval.
+Otherwise, both literal and semantic retrieval use the whole query across all
+clients' documents; a bare surname isn't removed.
 
-Exact email/name, blank and owner-only queries bypass ranking. Recognized
-proof-of-address, beneficiary, meeting follow-up and statement recency rules
-keep their existing retrieval and ordering: the ranker runs only when their
-literal baseline is empty. A 401(k) or 403(b) statement query containing a month
-name (including standard abbreviations) or a year also keeps the literal-or-ranked
-behavior, with or without a recency cue. This is a routing guard, not a date filter.
+Exact email/name, blank and owner-only queries bypass ranking. After exact
+email/name lookup, complete unqualified rules take precedence over owner
+inference. A surname can scope a supported rule if removing it leaves a complete
+rule and identifies a unique owner. Recognized proof-of-address, beneficiary,
+meeting follow-up and statement recency rules retain their ordering: the ranker
+runs only when their literal baseline is empty. A 401(k) or 403(b) statement
+query containing a month name (including standard abbreviations) or a year also
+keeps the literal-or-ranked behavior, with or without a recency cue. This is a
+routing guard, not a date filter.
 
 The ranker encodes the residual query with `query:` and each title/body chunk
 with `passage:`. Windows are capped at 256 WordPiece tokens including special

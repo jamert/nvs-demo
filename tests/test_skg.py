@@ -59,14 +59,17 @@ def test_skg_search_expands_from_corpus_evidence() -> None:
             search.add_document(
                 other.id, DocumentInput(title="Pigment report", content="Spectrum")
             )
-            assert search.search("Rivera violet sample") == [bridge]
-            assert search.search("Rivera amethyst sample") == []
+            assert search.search("Avery Rivera violet sample") == [bridge]
+            assert search.search("Avery Rivera amethyst sample") == []
 
         with search_factory(Postgres(dsn, "skg")) as search:
-            assert search.search("Rivera violet sample") == [bridge, related]
-            assert search.search("Rivera amethyst sample") == []
-            assert search.search("Rivera violet material") == [bridge]
+            assert search.search("Avery Rivera violet sample") == [bridge, related]
+            assert search.search("Avery Rivera amethyst sample") == []
+            assert search.search("Avery Rivera violet material") == [bridge]
             assert search.search("Avery Rivera") == [client, bridge]
 
         with SearchStorePostgres.connect(dsn, enriched) as store:
-            assert Search(store).search("Rivera amethyst sample") == [related, bridge]
+            assert Search(store).search("Avery Rivera amethyst sample") == [
+                related,
+                bridge,
+            ]

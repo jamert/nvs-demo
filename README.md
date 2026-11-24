@@ -64,11 +64,16 @@ Open [Swagger UI](http://127.0.0.1:8000/docs) to try the endpoints.
 
 For ordinary Dense E5 queries, literal document hits stay in insertion order;
 semantic hits at or above the cutoff follow in score order, without repeating
-document IDs. Both use the same candidate set, restricted to the resolved owner
-if there is one. Exact email/name, blank and owner-only queries do not rank
-documents. Recognized search rules and 401(k)/403(b) statement queries with an
-explicit month or year retain the prior behavior of ranking only if there are
-no literal hits.
+document IDs. Both use the same candidate set. In ordinary ranked searches, a
+unique matched full name scopes the results to that client. Otherwise, search
+uses the whole query across all clients' documents: `utility bill` keeps both
+words even if a client's surname is Bill. Surname-only lookup still works,
+and a surname can scope a recognized rule when it identifies a unique owner.
+
+Exact email/name, blank and owner-only queries do not rank documents. After
+exact email/name lookup, a complete unqualified rule takes precedence over
+owner inference. Recognized search rules and 401(k)/403(b) statement queries
+with an explicit month or year rank only if there are no literal hits.
 
 If you previously used `NEVIS_STORE=sqlite` or `NEVIS_STORE=postgres`, remove it
 and use `NEVIS_SEARCH=sqlite-substring` or `NEVIS_SEARCH=postgres-substring`.

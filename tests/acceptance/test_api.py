@@ -33,6 +33,17 @@ def test_search_exact_matches(search: SearchApi) -> None:
     assert document in search.search_documents("electricity account statement")
 
 
+@pytest.mark.parametrize("search_config", ["dense-e5"], indirect=True)
+def test_find_document_without_naming_its_client(search: SearchApi) -> None:
+    owner = search.create_client(Client.any())
+    document = search.add_document(owner, Document.any(for_=owner))
+
+    # "bill" is part of the search phrase, not a reference to this unrelated client.
+    search.create_client(ClientBuilder().with_last_name("Bill").build())
+
+    assert document in search.search_documents("utility bill")
+
+
 @pytest.mark.parametrize(
     ("client", "expected_status"),
     [

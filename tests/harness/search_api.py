@@ -21,12 +21,18 @@ class Client(BaseModel):
 class ClientBuilder:
     id: str = field(default_factory=lambda: str(uuid4()))
     email: str = field(default_factory=lambda: f"jane.doe+{uuid4().hex}@example.com")
+    last_name: str = "Doe"
 
     def with_id(self, client_id: str) -> ClientBuilder:
         return replace(self, id=client_id)
 
+    def with_last_name(self, last_name: str) -> ClientBuilder:
+        return replace(self, last_name=last_name)
+
     def build(self) -> Client:
-        return Client(id=self.id, first_name="Jane", last_name="Doe", email=self.email)
+        return Client(
+            id=self.id, first_name="Jane", last_name=self.last_name, email=self.email
+        )
 
 
 class Document(BaseModel):

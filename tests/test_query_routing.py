@@ -22,10 +22,18 @@ def document(
     )
 
 
-@pytest.mark.parametrize("owner_prefix", ["", "Reed ", "June Reed, "])
+@pytest.mark.parametrize(
+    ("owner_prefix", "scoped"),
+    [
+        ("", False),
+        ("Reed ", False),
+        ("June Reed, ", True),
+        ("June Reed Alex Smith ", False),
+    ],
+)
 @pytest.mark.parametrize("phrase", ["mortgage balance", "march mortgage balance"])
 def test_route_query_appends_ranked_results_after_literal_results_in_scope(
-    owner_prefix: str, phrase: str
+    owner_prefix: str, scoped: bool, phrase: str
 ) -> None:
     owner = Client(
         id=uuid4(), first_name="June", last_name="Reed", email="june@example.com"
@@ -33,17 +41,19 @@ def test_route_query_appends_ranked_results_after_literal_results_in_scope(
     other = Client(
         id=uuid4(), first_name="Alex", last_name="Smith", email="alex@example.com"
     )
+    query = f"{owner_prefix}{phrase}"
+    residual = phrase if scoped else query.casefold()
     ranked_later = document(owner.id, "Home loan summary")
-    other_doc = document(other.id, f"{phrase.title()} for Alex")
-    literal_first = document(owner.id, f"{phrase.title()} note")
+    other_doc = document(other.id, f"{residual.title()} for Alex")
+    literal_first = document(owner.id, f"{residual.title()} note")
     ranked_earlier = document(owner.id, "Outstanding principal")
-    literal_second = document(owner.id, "Loan statement", phrase.title())
+    literal_second = document(owner.id, "Loan statement", residual.title())
     documents = [ranked_later, other_doc, literal_first, ranked_earlier, literal_second]
 
     def rank(query: str, candidates: Sequence[Document]) -> list[Document]:
-        assert query == phrase
+        assert query == residual
         assert list(candidates) == [
-            doc for doc in documents if not owner_prefix or doc.client_id == owner.id
+            doc for doc in documents if not scoped or doc.client_id == owner.id
         ]
         return [
             ranked_earlier,
@@ -53,11 +63,11 @@ def test_route_query_appends_ranked_results_after_literal_results_in_scope(
         ]
 
     expected = [literal_first, literal_second, ranked_earlier, ranked_later]
-    if not owner_prefix:
+    if not scoped:
         expected.insert(0, other_doc)
     assert (
         route_query(
-            f"{owner_prefix}{phrase}",
+            query,
             [owner, other],
             lambda: documents,
             rank,
@@ -76,11 +86,15 @@ def test_route_query_skips_ranking_literal_hits_by_default() -> None:
     assert route_query("mortgage balance", [], lambda: [literal], rank) == [literal]
 
 
-def test_route_query_does_not_apply_address_proof_rule_to_utility_bill_query() -> None:
-    owner = uuid4()
-    literal = document(owner, "April utility bill")
-    gas = document(owner, "Gas bill")
-    documents = [gas, literal]
+def test_route_query_keeps_utility_bill_unscoped_without_address_rule() -> None:
+    owner = Client(
+        id=uuid4(), first_name="Jane", last_name="Doe", email="jane@example.com"
+    )
+    other = Client(
+        id=uuid4(), first_name="Alex", last_name="Bill", email="alex@example.com"
+    )
+    literal = document(owner.id, "April utility bill")
+    documents = [document(other.id, "Gas bill"), literal]
 
     def rank(query: str, candidates: Sequence[Document]) -> list[Document]:
         assert query == "utility bill"
@@ -88,7 +102,11 @@ def test_route_query_does_not_apply_address_proof_rule_to_utility_bill_query() -
         return []
 
     assert route_query(
-        "utility bill", [], lambda: documents, rank, append_ranked_to_literal=True
+        "utility bill",
+        [owner, other],
+        lambda: documents,
+        rank,
+        append_ranked_to_literal=True,
     ) == [literal]
 
 
@@ -126,48 +144,71 @@ def test_route_query_keeps_literal_or_ranked_baseline_for_explicit_statement_per
 
 
 @pytest.mark.parametrize(
-    ("query", "literal_phrase", "rule_title", "rule_content"),
+    "owner_prefix", ["", "Reed "], ids=["unqualified", "qualified-by-surname"]
+)
+@pytest.mark.parametrize(
+    ("query", "literal_phrase", "matching_surname", "rule_title", "rule_content"),
     [
-        ("proof of address", "proof of address", "Utility bill", ""),
+        ("proof of address", "proof of address", "Address", "Utility bill", ""),
         (
             "who inherits account ending 0762",
             "who inherits account ending 0762",
+            "Inherits",
             "Beneficiary designation",
             "Account ending: 0762",
         ),
         (
             "what was left to do after the last meeting",
             "what was left to do after the last meeting",
+            "Meeting",
             "Follow-up letter",
             "",
         ),
         (
             "latest 401(k) statement",
             "401(k) statement",
+            "Latest",
             "Workplace statement",
             "401k Statement",
         ),
     ],
 )
-def test_route_query_keeps_literal_baseline_for_active_rules(
-    query: str, literal_phrase: str, rule_title: str, rule_content: str
+def test_route_query_keeps_literal_baseline_for_active_rules_with_surname_collision(
+    query: str,
+    literal_phrase: str,
+    matching_surname: str,
+    rule_title: str,
+    rule_content: str,
+    owner_prefix: str,
 ) -> None:
-    owner = uuid4()
-    literal = document(owner, "Client notes", f"{literal_phrase}\nAccount ending: 0762")
-    candidate = document(owner, rule_title, rule_content)
-    unrelated = document(owner, "Summary")
+    owner = Client(
+        id=uuid4(), first_name="June", last_name="Reed", email="june@example.com"
+    )
+    other = Client(
+        id=uuid4(),
+        first_name="Alex",
+        last_name=matching_surname,
+        email="alex@example.com",
+    )
+    literal = document(
+        owner.id, "Client notes", f"{literal_phrase}\nAccount ending: 0762"
+    )
+    candidate = document(owner.id, rule_title, rule_content)
+    other_candidate = document(other.id, rule_title, rule_content)
+    unrelated = document(owner.id, "Summary")
 
     def rank(query: str, documents: Sequence[Document]) -> Sequence[Document]:
         pytest.fail("an active rule with literal hits should not call the ranker")
 
+    additions = [candidate] if owner_prefix else [candidate, other_candidate]
     expected = (
-        [literal, candidate] if query.startswith("latest") else [candidate, literal]
+        [literal, *additions] if query.startswith("latest") else [*additions, literal]
     )
     assert (
         route_query(
-            query,
-            [],
-            lambda: [literal, unrelated, candidate],
+            f"{owner_prefix}{query}",
+            [owner, other],
+            lambda: [literal, unrelated, candidate, other_candidate],
             rank,
             append_ranked_to_literal=True,
         )
@@ -401,15 +442,18 @@ def test_route_query_preserves_inactive_recency_queries(
         )
         for name in ("June", "Sam")
     ]
-    doc = document(
-        clients[0].id, "401(k) quarterly statement", document_date=date(2025, 6, 30)
-    )
+    documents = [
+        document(client.id, "401(k) quarterly statement") for client in clients
+    ]
 
     def rank(phrase: str, candidates: Sequence[Document]) -> Sequence[Document]:
-        assert phrase == rank_query and list(candidates) == [doc]
+        assert phrase == rank_query
+        assert list(candidates) == (
+            documents[:1] if query.startswith("June Reed") else documents
+        )
         return []
 
-    assert route_query(query, clients, lambda: [doc], rank) == []
+    assert route_query(query, clients, lambda: documents, rank) == []
     assert (
         route_query(query, clients, lambda: pytest.fail("SQL should handle this"))
         is None

@@ -76,7 +76,7 @@ def test_postgres_bm25_uses_owner_routing_and_literal_precedence() -> None:
             DocumentInput(title="Referral", content="From Ada Vega (ada@example.com)"),
         )
 
-        assert search.search("VEGA solar invoice") == [first]
+        assert search.search("ADA VEGA solar invoice") == [first]
         assert search.search("ada vega") == [owner, referral]
         assert search.search("ada@example.com") == [owner, referral]
-        assert search.search("VEGA solar period") == [first, second]
+        assert search.search("ADA VEGA solar period") == [first, second]
