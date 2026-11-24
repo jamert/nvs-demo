@@ -83,4 +83,6 @@ uv run --locked pytest -s --no-cov evals/ -k Aimee            # Aimee only
 uv run --locked python -m evals.compare > search-comparison.json
 ```
 
-The pytest quality run exits nonzero if any query misses. The JSON replay records stable top-five keys and gold ranks per case. Its `by_task` view reports `total`, `top1`, and `hit5` for the matched queries, with a `by_client` breakdown and separate `extras` and `typos` counts when applicable. Existing group fields are unchanged. `typos_clean_controls` is keyed by the misspelled query. See [advisor tasks](../advisor-tasks.md#krag-and-typo-eval-groups) for the clean Jamie and Aimee relevance judgments.
+The pytest quality run exits nonzero if any query misses. The JSON replay records stable top-five keys and gold ranks per case. The `by_task` view reports `total`, `top1`, and `hit5` for the matched queries, with a `by_client` breakdown and separate `extras` and `typos` counts when applicable. Existing group fields are unchanged. `typos_clean_controls` is keyed by the misspelled query. See [advisor tasks](../advisor-tasks.md#krag-and-typo-eval-groups) for the clean Jamie and Aimee relevance judgments.
+
+`holdout_seed` identifies the [frozen historical seed](../../evals/README.md) by version and SHA-256. This seed is independent of the live ranked and recency fixtures.

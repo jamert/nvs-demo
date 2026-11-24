@@ -26,9 +26,7 @@ from nevis_search.search import Client, Document, search_factory
 
 def test_ranked_labels_refer_to_seeded_records_of_the_requested_type() -> None:
     with search_factory(SQLite()) as search:
-        original = seed_ranked(search, expanded=False)
-    with search_factory(SQLite()) as search:
-        expanded = seed_ranked(search)
+        ranked = seed_ranked(search)
     additions = {
         "jamie": ("jamie-release-draft", "jamie-release-signed"),
         "aimee": (
@@ -39,19 +37,17 @@ def test_ranked_labels_refer_to_seeded_records_of_the_requested_type() -> None:
             "aimee-release-signed",
         ),
     }
-    assert len(original) == 26  # 3 clients, 23 documents
-    assert set(expanded) - set(original) == {
-        key for keys in additions.values() for key in keys
-    }
+    assert sum(isinstance(row, Client) for row in ranked.values()) == 3
+    assert sum(isinstance(row, Document) for row in ranked.values()) == 30
     for owner, keys in additions.items():
-        client = expanded[owner]
+        client = ranked[owner]
         for key in keys:
-            doc = expanded[key]
+            doc = ranked[key]
             assert isinstance(doc, Document)
             assert doc.client_id == client.id
     for cases in RANKED_GROUPS.values():
         for case in cases:
-            assert isinstance(expanded[case.expected_key], case.result_type)
+            assert isinstance(ranked[case.expected_key], case.result_type)
 
 
 @pytest.mark.parametrize(

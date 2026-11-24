@@ -189,23 +189,8 @@ TYPO_CASES = tuple(
 )
 RANKED_GROUPS = {**CLEAN_GROUPS, "Typos": TYPO_CASES}
 
-# Keep the archived holdout on its original 23-document corpus.
-POST_HOLDOUT_KEYS = frozenset(
-    {
-        "jamie-release-draft",
-        "jamie-release-signed",
-        "aimee-403b-mar",
-        "aimee-403b-jun",
-        "gas-old-address",
-        "aimee-release-draft",
-        "aimee-release-signed",
-    }
-)
 
-
-def seed_ranked(
-    search: Search, *, expanded: bool = True
-) -> dict[str, Client | Document]:
+def seed_ranked(search: Search) -> dict[str, Client | Document]:
     clients = {
         owner: search.create_client(
             ClientInput(first_name=first, last_name=last, email=email)
@@ -221,8 +206,6 @@ def seed_ranked(
         for key, fixture in load_documents(CORPORA[corpus]).items():
             if fixture.owner == "household":
                 continue  # The API cannot attach one record to two clients.
-            if not expanded and key in POST_HOLDOUT_KEYS:
-                continue
             records[key] = search.add_document(
                 clients[fixture.owner].id, fixture.to_document_input()
             )

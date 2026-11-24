@@ -80,12 +80,8 @@ def test_seed_second_batch_keeps_existing_corpora_isolated() -> None:
         combined = seed_second_batch(search, fixtures)
     with search_factory(SQLite()) as search:
         ranked = seed_ranked(search)
-    with search_factory(SQLite()) as search:
-        holdout = seed_ranked(search, expanded=False)
 
     assert sum(isinstance(row, Document) for row in ranked.values()) == 30
-    assert sum(isinstance(row, Document) for row in holdout.values()) == 23
-    assert set(holdout) < set(ranked)
     assert fixtures.keys().isdisjoint(ranked)
     assert set(combined) == ranked.keys() | fixtures.keys()
     assert sum(isinstance(row, Client) for row in combined.values()) == 3
