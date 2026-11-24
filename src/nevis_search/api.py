@@ -17,6 +17,7 @@ from nevis_search.search import (
     Search,
     search_factory,
 )
+from nevis_search.search.core import REJECT_NUL
 
 __all__ = ["create_app"]
 
@@ -54,7 +55,9 @@ def add_document(
 
 @router.get("/search", response_description="Search results")
 def search(
-    service: SearchDependency, q: Annotated[str, Query(pattern=r"\S")]
+    service: SearchDependency,
+    # Put the pattern before the validator so it remains in OpenAPI.
+    q: Annotated[str, Query(pattern=r"\S"), REJECT_NUL],
 ) -> list[Client | Document]:
     return service.search(q)
 

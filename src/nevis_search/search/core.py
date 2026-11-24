@@ -1,10 +1,10 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Protocol
+from typing import Annotated, Protocol
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, EmailStr, Field
 
 from .document_dates import extract_document_date
 
@@ -23,12 +23,23 @@ class ClientNotFound(Exception):
     pass
 
 
+def _reject_nul(value: str) -> str:
+    # PostgreSQL cannot store or accept NUL in text parameters.
+    if "\x00" in value:
+        raise ValueError("Text must not contain NUL")
+    return value
+
+
+REJECT_NUL = AfterValidator(_reject_nul)
+NulFreeText = Annotated[str, REJECT_NUL]
+
+
 class ClientInput(BaseModel):
-    first_name: str
-    last_name: str
+    first_name: NulFreeText
+    last_name: NulFreeText
     email: EmailStr
-    description: str = ""
-    social_links: list[str] = Field(default_factory=list)
+    description: NulFreeText = ""
+    social_links: list[NulFreeText] = Field(default_factory=list)
 
 
 class Client(ClientInput):
@@ -36,8 +47,8 @@ class Client(ClientInput):
 
 
 class DocumentInput(BaseModel):
-    title: str
-    content: str
+    title: NulFreeText
+    content: NulFreeText
 
 
 class Document(DocumentInput):
