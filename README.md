@@ -37,8 +37,9 @@ client and document, verifies exact and proof-of-address search, and exercises
 the Dense E5 fallback. It removes its own containers and data on exit. The
 script also accepts a `NEVIS_SEARCH` override.
 
-To run directly on your machine instead, use [uv](https://docs.astral.sh/uv/) with Python 3.15.2
-(pinned in `.python-version`):
+To run directly on your machine instead, use [uv](https://docs.astral.sh/uv/).
+It uses the Python compatibility requirement (`>=3.15`) in `pyproject.toml`;
+no `.python-version` file is required:
 
 ```sh
 uv sync

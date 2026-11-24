@@ -17,7 +17,7 @@ ENV UV_PYTHON_DOWNLOADS=never \
     NEVIS_EMBEDDINGS_HOME=/opt/nevis-e5
 COPY --from=embeddings /opt/uv-python /opt/uv-python
 COPY --from=embeddings /opt/nevis-e5 /opt/nevis-e5
-COPY .python-version pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 RUN uv sync --locked --no-dev --no-editable
 
