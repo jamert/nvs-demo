@@ -3,7 +3,7 @@
 import re
 from collections.abc import Callable, Sequence
 
-from .core import Client, Document
+from .core import Client, Document, RecencyObserver, RecencyTrace
 from .query_rules import (
     add_rule_candidates,
     add_statement_candidates,
@@ -29,6 +29,8 @@ def route_query(
     clients: Sequence[Client],
     load_documents: Callable[[], Sequence[Document]],
     rank: RankDocuments | None = None,
+    *,
+    observe_recency: RecencyObserver | None = None,
 ) -> list[Client | Document] | None:
     """Return insertion-ordered exact/literal hits or use the selected ranker.
 
@@ -101,5 +103,12 @@ def route_query(
         baseline = add_rule_candidates(rule, baseline, documents)
     if recency is not None:
         candidates, accounts = add_statement_candidates(plan, baseline, documents)
+        before = (
+            tuple(doc.id for doc in candidates) if observe_recency is not None else ()
+        )
         baseline = rerank_statements(candidates, accounts)
+        if observe_recency is not None:
+            observe_recency(
+                RecencyTrace(True, before, tuple(doc.id for doc in baseline))
+            )
     return [*client_hits, *baseline]

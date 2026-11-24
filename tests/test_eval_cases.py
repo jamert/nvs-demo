@@ -1,8 +1,9 @@
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
 
-from evals.compare import by_task
+from evals.compare import by_task, compare_explicit_recency
 from evals.search_quality import (
     AIMEE_CASES,
     CLEAN_CASES,
@@ -75,6 +76,7 @@ def test_matched_queries_only_change_the_owner_and_plan_type(
         )
         assert reed_case.query.replace(reed_name, "<owner>") == normalized
         assert reed_case.result_type is matched.result_type
+        assert reed_case.expected_recency_active is matched.expected_recency_active
         expected = records[matched.expected_key]
         if isinstance(expected, Document):
             assert expected.client_id == client.id
@@ -162,4 +164,66 @@ def test_typos_keep_the_same_target_and_type_as_the_clean_query() -> None:
         assert case.expected_key == clean.expected_key
         assert case.result_type is clean.result_type
         assert case.task == clean.task
+        assert case.expected_recency_active is None
         assert case.query != clean.query
+
+
+def test_compare_explicit_recency_replays_only_three_marked_matched_cases() -> None:
+    with search_factory(SQLite()) as search:
+        report = compare_explicit_recency(search)
+
+    assert report["gold_present"] == 3
+    assert report["rerank_off"] == {"total": 3, "top1": 0, "hit5": 3}
+    assert report["rerank_on"] == {"total": 3, "top1": 3, "hit5": 3}
+    assert report["controls"] == report["activation_mismatches"] == []
+    assert [row["rerank_off"]["query"] for row in report["cases"]] == [
+        "reed latest 401(k) statement",
+        "jamie krag latest 401(k) statement",
+        "aimee smith-krag latest 403(b) statement",
+    ]
+    assert all(
+        row["expected_active"] and row["actual_active"] for row in report["cases"]
+    )
+
+
+def test_compare_explicit_recency_handles_a_deliberate_year_constraint() -> None:
+    control = RankedCase(
+        "reed latest 401(k) statement 2025",
+        "karen-401k-jun",
+        expected_recency_active=False,
+    )
+    with search_factory(SQLite()) as search:
+        report = compare_explicit_recency(search, cases=[control])
+
+    assert report["cases"] == report["activation_mismatches"] == []
+    assert report["rerank_off"]["total"] == report["rerank_on"]["total"] == 0
+    [row] = report["controls"]
+    assert not row["expected_active"] and not row["actual_active"]
+    assert row["rerank_off"] == row["rerank_on"]
+    assert row["rerank_on"]["query"] == control.query
+
+
+def test_compare_explicit_recency_reports_both_activation_mismatches_by_query() -> None:
+    active = RankedCase(
+        "reed latest 401(k) statement", "karen-401k-jun", expected_recency_active=False
+    )
+    constrained = replace(
+        active, query=f"{active.query} 2025", expected_recency_active=True
+    )
+    with search_factory(SQLite()) as search:
+        report = compare_explicit_recency(search, cases=[constrained, active])
+
+    assert report["activation_mismatches"] == [constrained.query, active.query]
+    [missing_activation] = report["cases"]
+    assert (
+        missing_activation["expected_active"]
+        and not missing_activation["actual_active"]
+    )
+    assert missing_activation["rerank_off"] == missing_activation["rerank_on"]
+    assert report["rerank_off"]["total"] == report["rerank_on"]["total"] == 1
+    [unexpected_activation] = report["controls"]
+    assert (
+        not unexpected_activation["expected_active"]
+        and unexpected_activation["actual_active"]
+    )
+    assert unexpected_activation["rerank_off"] != unexpected_activation["rerank_on"]

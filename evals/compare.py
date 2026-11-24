@@ -2,20 +2,17 @@
 
 import json
 from collections import defaultdict
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from functools import partial
 from math import ceil
 from statistics import median
 from time import perf_counter_ns
 from typing import Literal, TypedDict
-from unittest.mock import patch
-from uuid import UUID
 
 from nevis_search.config import POSTGRES_APPROACHES, Postgres, PostgresApproach, SQLite
 from nevis_search.search import Document, Search, search_factory
 from nevis_search.search.postgres import SearchStorePostgres
-from nevis_search.search.query_rules import rerank_statements
 from nevis_search.search.skg import rank_documents
 from tests.harness.environment import postgres_container
 
@@ -115,44 +112,62 @@ def by_task(ranked: dict[str, list[CaseResult]]) -> dict[str, TaskReport]:
     return results
 
 
-def compare_explicit_recency(search: Search) -> dict[str, object]:
-    cases = [
-        case
-        for group in MATCHED_GROUPS.values()
-        for case in group
-        if case.task == "latest_plan_statement"
-        and set(case.query.split()) & {"latest", "newest", "current"}
-    ]
-    records = seed_ranked(search)
-    keys_by_id = {doc.id: key for key, doc in records.items()}
-    candidates: list[list[str]] = []
+class RecencyCaseReport(TypedDict):
+    expected_active: bool
+    actual_active: bool
+    rerank_off: CaseResult
+    rerank_on: CaseResult
 
-    def record(
-        documents: Sequence[Document], accounts_by_id: Mapping[UUID, frozenset[str]]
-    ) -> list[Document]:
-        candidates.append([keys_by_id[doc.id] for doc in documents])
-        return rerank_statements(documents, accounts_by_id)
 
-    # Observe the actual post-retrieval candidates without re-querying or changing ranks.
-    with patch(
-        "nevis_search.search.query_routing.rerank_statements", side_effect=record
-    ):
-        reranked = run_cases(search, records, cases)
-    baseline = [
-        score_case(case, keys) for case, keys in zip(cases, candidates, strict=True)
-    ]
-    return {
-        "gold_present": sum(
+class ExplicitRecencyReport(TypedDict):
+    gold_present: int
+    rerank_off: Counts
+    rerank_on: Counts
+    cases: list[RecencyCaseReport]
+    controls: list[RecencyCaseReport]
+    activation_mismatches: list[str]
+
+
+def compare_explicit_recency(
+    search: Search, *, cases: Sequence[RankedCase] | None = None
+) -> ExplicitRecencyReport:
+    if cases is None:
+        cases = [case for group in MATCHED_GROUPS.values() for case in group]
+    keys_by_id = {row.id: key for key, row in seed_ranked(search).items()}
+    expected_active_cases: list[RecencyCaseReport] = []
+    controls: list[RecencyCaseReport] = []
+    mismatches: list[str] = []
+    for case in cases:
+        expected = case.expected_recency_active
+        if expected is None:
+            continue
+        _, trace = search.search_with_recency_trace(case.query)
+        row = RecencyCaseReport(
+            expected_active=expected,
+            actual_active=trace.active,
+            rerank_off=score_case(
+                case, [keys_by_id[id_] for id_ in trace.before_document_ids]
+            ),
+            rerank_on=score_case(
+                case, [keys_by_id[id_] for id_ in trace.after_document_ids]
+            ),
+        )
+        if expected != trace.active:
+            mismatches.append(case.query)
+        (expected_active_cases if expected else controls).append(row)
+
+    baseline = [row["rerank_off"] for row in expected_active_cases]
+    return ExplicitRecencyReport(
+        gold_present=sum(
             any(rank is not None for rank in row["gold_ranks"].values())
             for row in baseline
         ),
-        "rerank_off": counts(baseline),
-        "rerank_on": counts(reranked),
-        "cases": [
-            {"rerank_off": before, "rerank_on": after}
-            for before, after in zip(baseline, reranked, strict=True)
-        ],
-    }
+        rerank_off=counts(baseline),
+        rerank_on=counts([row["rerank_on"] for row in expected_active_cases]),
+        cases=expected_active_cases,
+        controls=controls,
+        activation_mismatches=mismatches,
+    )
 
 
 def compare(mode: Mode) -> dict[str, object]:

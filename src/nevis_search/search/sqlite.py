@@ -4,7 +4,7 @@ from collections.abc import Generator
 from contextlib import closing, contextmanager
 from typing import Self
 
-from .core import Client, Document
+from .core import Client, Document, RecencyObserver
 from .query_routing import route_query
 from .query_rules import may_match_query_rule
 
@@ -82,11 +82,16 @@ class SearchStoreSQLite:
         rows = self._db.execute("SELECT * FROM documents ORDER BY rowid")
         return [Document.model_validate(dict(row)) for row in rows]
 
-    def search(self, query: str) -> list[Client | Document]:
+    def search(
+        self, query: str, *, observe_recency: RecencyObserver | None = None
+    ) -> list[Client | Document]:
         if may_match_query_rule(query):
             rows = self._db.execute("SELECT * FROM clients ORDER BY rowid")
             routed = route_query(
-                query, [_client_from_row(row) for row in rows], self._load_documents
+                query,
+                [_client_from_row(row) for row in rows],
+                self._load_documents,
+                observe_recency=observe_recency,
             )
             if routed is not None:
                 return routed

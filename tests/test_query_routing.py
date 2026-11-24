@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from nevis_search.search import Client, Document
+from nevis_search.search.core import RecencyTrace
 from nevis_search.search.query_routing import route_query
 
 
@@ -113,13 +114,20 @@ def test_route_query_reranks_comparable_versions_only() -> None:
         other_new,
     ]
 
+    retrieval: list[str] = []
+    traces: list[RecencyTrace] = []
+
+    def load_documents() -> list[Document]:
+        retrieval.append("load")
+        return baseline
+
     def rank(phrase: str, candidates: Sequence[Document]) -> Sequence[Document]:
+        retrieval.append("rank")
         assert phrase == "401(k) statement"
         assert list(candidates) == baseline
         return candidates
 
-    assert route_query(query, clients, lambda: baseline, rank) == [
-        *clients,
+    ordered = [
         june,
         undated,
         unrelated,
@@ -134,6 +142,15 @@ def test_route_query_reranks_comparable_versions_only() -> None:
         tied,
         march,
         other_old,
+    ]
+    assert route_query(
+        query, clients, load_documents, rank, observe_recency=traces.append
+    ) == [*clients, *ordered]
+    assert retrieval == ["load", "rank"]
+    assert traces == [
+        RecencyTrace(
+            True, tuple(doc.id for doc in baseline), tuple(doc.id for doc in ordered)
+        )
     ]
 
 

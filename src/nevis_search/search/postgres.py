@@ -5,7 +5,7 @@ from typing import Any, Self
 import psycopg
 from psycopg.rows import dict_row
 
-from .core import Client, Document
+from .core import Client, Document, RecencyObserver
 from .document_dates import extract_document_date
 from .query_routing import RankDocuments, route_query
 from .query_rules import may_match_query_rule
@@ -83,7 +83,9 @@ class SearchStorePostgres:
         rows = self._db.execute("SELECT * FROM documents ORDER BY position")
         return [Document.model_validate(row) for row in rows]
 
-    def search(self, query: str) -> list[Client | Document]:
+    def search(
+        self, query: str, *, observe_recency: RecencyObserver | None = None
+    ) -> list[Client | Document]:
         if self._rank is not None or may_match_query_rule(query):
             clients = self._db.execute("SELECT * FROM clients ORDER BY position")
             routed = route_query(
@@ -91,6 +93,7 @@ class SearchStorePostgres:
                 [Client.model_validate(row) for row in clients],
                 self._load_documents,
                 self._rank,
+                observe_recency=observe_recency,
             )
             if routed is not None:
                 return routed

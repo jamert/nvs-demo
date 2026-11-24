@@ -73,6 +73,7 @@ class RankedCase:
     expected_key: str
     result_type: type[Client | Document] = Document
     task: str | None = None
+    expected_recency_active: bool | None = None  # None excludes non-diagnostic cases.
 
 
 # Judged from the advisor's task, not the baseline's output. See doc/advisor-tasks.md.
@@ -84,7 +85,10 @@ REED_CASES = (
     RankedCase("reed 401k", "karen-401k-jun", task="latest_plan_statement"),
     RankedCase("401k statement reed", "karen-401k-jun", task="latest_plan_statement"),
     RankedCase(
-        "reed latest 401(k) statement", "karen-401k-jun", task="latest_plan_statement"
+        "reed latest 401(k) statement",
+        "karen-401k-jun",
+        task="latest_plan_statement",
+        expected_recency_active=True,
     ),
     RankedCase(
         "reed authorization", "karen-release-signed", task="signed_authorization"
@@ -180,7 +184,8 @@ MATCHED_GROUPS = {"Reed": REED_CASES, "Krag": KRAG_CASES, "Aimee": AIMEE_CASES}
 CLEAN_GROUPS = {**MATCHED_GROUPS, "Krag extras": KRAG_EXTRA_CASES}
 CLEAN_CASES = {case.query: case for group in CLEAN_GROUPS.values() for case in group}
 TYPO_CASES = tuple(
-    replace(CLEAN_CASES[clean], query=typo) for clean, typo in TYPO_VARIANTS.items()
+    replace(CLEAN_CASES[clean], query=typo, expected_recency_active=None)
+    for clean, typo in TYPO_VARIANTS.items()
 )
 RANKED_GROUPS = {**CLEAN_GROUPS, "Typos": TYPO_CASES}
 

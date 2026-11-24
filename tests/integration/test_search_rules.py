@@ -191,15 +191,20 @@ def test_statement_recency_accepts_aliases(scenario: Scenario, cue: str) -> None
 
 
 def test_statement_recency_preserves_explicit_period_query(scenario: Scenario) -> None:
+    year_query = "Jane Doe latest 401(k) statement 2025"
     march = scenario.add(
         "March 401(k) statement",
         "Jane Doe March 401(k) statement\nJane Doe latest 401(k) statement for March\n"
-        "Period ending: 2025-03-31",
+        f"{year_query}\nPeriod ending: 2025-03-31",
     )
     scenario.add("June 401(k) statement", "Period ending: 2025-06-30")
 
     assert scenario.documents("Jane Doe March 401(k) statement") == [march]
     assert scenario.documents("Jane Doe latest 401(k) statement for March") == [march]
+    results, trace = scenario.search.search_with_recency_trace(year_query)
+    assert results == scenario.search.search(year_query) == [march]
+    assert not trace.active
+    assert trace.before_document_ids == trace.after_document_ids == (march.id,)
 
 
 def test_beneficiary_rule_requires_a_matching_account_and_owner(
