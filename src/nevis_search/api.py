@@ -36,7 +36,7 @@ async def health() -> str:
 
 
 @router.post("/clients", status_code=201, response_description="Client created")
-async def create_client(payload: ClientInput, service: SearchDependency) -> Client:
+def create_client(payload: ClientInput, service: SearchDependency) -> Client:
     return service.create_client(payload)
 
 
@@ -46,14 +46,14 @@ async def create_client(payload: ClientInput, service: SearchDependency) -> Clie
     response_description="Document created",
     responses={404: {"description": "Client not found"}},
 )
-async def add_document(
+def add_document(
     id: UUID, payload: DocumentInput, service: SearchDependency
 ) -> Document:
     return service.add_document(id, payload)
 
 
 @router.get("/search", response_description="Search results")
-async def search(
+def search(
     service: SearchDependency, q: Annotated[str, Query(pattern=r"\S")]
 ) -> list[Client | Document]:
     return service.search(q)
