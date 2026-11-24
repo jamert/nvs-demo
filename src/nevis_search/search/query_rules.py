@@ -24,12 +24,15 @@ _BENEFICIARY_RULE = QueryRule(
 _ACCOUNT_QUERY = re.compile(
     r"(?:who inherits|who will inherit) (?:the |my )?account ending (?:in )?(?P<suffix>[0-9]{4})"
 )
-# Accept an explicitly labeled suffix or a masked account identifier, not an
-# arbitrary mention of four digits (e.g. in a date or receipt number).
+# Recognize an explicit label even when its identifier is missing or unusable.
+# Recency requires a whole field; beneficiary lookup also accepts inline references.
 _ACCOUNT_REFERENCE = re.compile(
-    r"\baccount(?:\s+(?:ending\b(?:\s+in\b)?\s*:?|number\s*:)|\s*:|(?=\s+[*•x]{2,}))"
-    r"\s*(?:[*•x]{2,}\s*)?([0-9]{4})\b"
+    r"\baccount(?:"
+    r"\s+(?P<ending>ending)\b(?:\s+in\b\s*:?|\s*:|(?=\s*(?:[0-9]|[*•x]{2,})))"
+    r"|\s+number\s*:|\s*:|(?=\s+[*•x]{2,}))"
+    r"\s*(?:(?P<mask>[*•x]{2,}\s*|[*•x]?)(?P<digits>[0-9]+)(?!\w|[-./][0-9]))?"
 )
+_UNUSABLE_ACCOUNT = ""
 
 _RULES = (
     QueryRule(
@@ -63,7 +66,6 @@ _RECENCY_QUERY = re.compile(
 _STATEMENT_TITLE = re.compile(r"\bstatement\b")
 _STATEMENT_HEADING = re.compile(rf"{_PLAN_TEXT}\s+statement\b")
 _PLAN_LABEL = re.compile(r"plan(?: type)?\s*:")
-_ACCOUNT_LABEL = re.compile(r"account( ending| number)?\s*:\s*(.*)")
 
 
 def _plan_key(plan: str) -> str:
@@ -75,6 +77,22 @@ def match_recency_query(residual: str) -> tuple[str, str] | None:
         plan = match["plan"]
         return _plan_key(plan), f"{plan} statement"
     return None
+
+
+def _statement_account_key(field: str) -> str | None:
+    field = field.removesuffix(".")
+    if (reference := _ACCOUNT_REFERENCE.match(field)) is None:
+        return None
+    digits = reference["digits"]
+    if digits is None or reference.end() != len(field):
+        return _UNUSABLE_ACCOUNT
+    mask = reference["mask"].rstrip()
+    if reference["ending"]:
+        return (
+            f"ending:{digits}" if not mask and len(digits) == 4 else _UNUSABLE_ACCOUNT
+        )
+    # Keep any mask and the entire identifier; a suffix does not identify a full number.
+    return f"number:{mask}{digits}"
 
 
 def _statement_accounts(doc: Document, plan: str) -> frozenset[str] | None:
@@ -98,18 +116,9 @@ def _statement_accounts(doc: Document, plan: str) -> frozenset[str] | None:
     ):
         return None
 
-    accounts: set[str] = set()
-    for field in fields:
-        if match := _ACCOUNT_LABEL.fullmatch(field):
-            kind, value = match.groups()
-            value = value.removesuffix(".")
-            if kind == " ending" and re.fullmatch(r"[0-9]{4}", value):
-                accounts.add(f"ending:{value}")
-            elif kind != " ending" and re.fullmatch(r"[*x]*[0-9]+", value):
-                accounts.add(f"number:{value}")
-            else:
-                accounts.add("")  # Explicit but unusable; do not infer identity.
-    return frozenset(accounts)
+    return frozenset(
+        key for field in fields if (key := _statement_account_key(field)) is not None
+    )
 
 
 def add_statement_candidates(
@@ -140,7 +149,7 @@ def rerank_statements(
             continue
         # Unlabelled versions compare only where no candidate has an account label.
         if (not accounts and doc.client_id not in labelled) or (
-            len(accounts) == 1 and "" not in accounts
+            len(accounts) == 1 and _UNUSABLE_ACCOUNT not in accounts
         ):
             groups[doc.client_id, accounts].append((i, doc.document_date, doc))
 
@@ -182,9 +191,15 @@ def match_query_rule(residual: str) -> QueryRule | None:
 
 
 def _matches_account(doc: Document, suffix: str) -> bool:
-    references = set(
-        _ACCOUNT_REFERENCE.findall(f"{doc.title}\n{doc.content}".casefold())
-    )
+    references = {
+        reference["digits"]
+        for reference in _ACCOUNT_REFERENCE.finditer(
+            f"{doc.title}\n{doc.content}".casefold()
+        )
+        if reference["digits"] is not None
+        and len(reference["digits"]) == 4
+        and len(reference["mask"].rstrip()) != 1
+    }
     return references == {suffix}
 
 

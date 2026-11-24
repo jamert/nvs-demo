@@ -161,9 +161,30 @@ def test_statement_recency_reorders_only_comparable_dated_statements(
     ]
 
 
+@pytest.mark.parametrize(
+    "same_account", [False, True], ids=["different-accounts", "same-account"]
+)
+def test_statement_recency_groups_masked_accounts(
+    scenario: Scenario, same_account: bool
+) -> None:
+    march = scenario.add(
+        "March 401(k) statement", "Account ••••0762\nPeriod ending: 2025-03-31"
+    )
+    june_suffix = "0762" if same_account else "0418"
+    june = scenario.add(
+        "June 401(k) statement", f"Account ••••{june_suffix}\nPeriod ending: 2025-06-30"
+    )
+
+    expected = [june, march] if same_account else [march, june]
+    assert scenario.documents("Jane Doe latest 401(k) statement") == expected
+
+
 @pytest.mark.parametrize("cue", ["NEWEST", "current"])
 def test_statement_recency_accepts_aliases(scenario: Scenario, cue: str) -> None:
-    march = scenario.add("March 401(k) statement", "Period ending: 3/31/2025")
+    march = scenario.add(
+        "March 401(k) statement",
+        "Account ending balance: $100\nPeriod ending: 3/31/2025",
+    )
     june = scenario.add("June 401(k) statement", "Period ending: 6/30/2025")
 
     assert scenario.documents(f"{cue} 401(k) statement") == [june, march]
@@ -193,20 +214,28 @@ def test_beneficiary_rule_requires_a_matching_account_and_owner(
         "Account ending: 0762 | Account ending: 0418",
     )
     scenario.add("Beneficiary designation — no account")
+    scenario.add("Beneficiary designation — full number", "Account number: 07620418")
+    scenario.add("Beneficiary designation — full number", "Account number: 04180762")
+    scenario.add("Beneficiary designation — split number", "Account number: 0762-0418")
+    scenario.add("Beneficiary designation — malformed suffix", "Account ••••0762x")
     scenario.add("Beneficiary designation", "Account number: xxxx0762", owner=other)
     statement = scenario.add(
         "Quarterly statement",
         "Jane Doe who inherits account ending 0762? See the designation.",
     )
     designation = scenario.add("Transfer-on-death designation", "Account ••••0762")
+    attachment = scenario.add(
+        "Attached form", "Beneficiary designation. Account number: xxxx0762."
+    )
 
     assert scenario.documents("Jane Doe who inherits account ending 0762") == [
         designation,
+        attachment,
         statement,
     ]
     alternate = scenario.documents("Doe, who will inherit my account ending in 0762?")
-    assert alternate[0] == designation
-    assert all(doc in [designation, statement] for doc in alternate)
+    assert alternate[:2] == [designation, attachment]
+    assert all(doc in [designation, attachment, statement] for doc in alternate)
     assert scenario.documents("Jane Doe who inherits account ending 9000") == []
 
 

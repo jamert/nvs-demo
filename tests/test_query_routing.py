@@ -138,6 +138,46 @@ def test_route_query_reranks_comparable_versions_only() -> None:
 
 
 @pytest.mark.parametrize(
+    ("march_label", "june_label"),
+    [
+        pytest.param(
+            "Account number: 12340762", "Account ••••0762", id="number-vs-suffix"
+        ),
+        pytest.param(
+            "Account number: 0762", "Account ••••0762", id="unmasked-vs-masked"
+        ),
+        pytest.param(
+            "Account ••••0762 | Account ••••0418",
+            "Account ••••0762",
+            id="conflicting-masks",
+        ),
+        pytest.param(
+            "Account ••••0762 | Account ••••unknown",
+            "Account ••••0762",
+            id="unusable-mask-alongside-valid-mask",
+        ),
+        pytest.param("", "", id="unlabelled-with-unusable-account-in-results"),
+    ],
+)
+def test_route_query_does_not_infer_statement_account_identity(
+    march_label: str, june_label: str
+) -> None:
+    owner = Client(
+        id=uuid4(), first_name="June", last_name="Reed", email="june@example.com"
+    )
+    baseline = [
+        document(owner.id, "March 401(k) statement", march_label, date(2025, 3, 31)),
+        document(owner.id, "June 401(k) statement", june_label, date(2025, 6, 30)),
+        document(owner.id, "Other 401(k) statement", "Account ••••unknown"),
+    ]
+
+    assert (
+        route_query("June Reed latest 401(k) statement", [owner], lambda: baseline)
+        == baseline
+    )
+
+
+@pytest.mark.parametrize(
     ("query", "rank_query"),
     [
         ("Reed latest 401(k) statement", "reed latest 401(k) statement"),
